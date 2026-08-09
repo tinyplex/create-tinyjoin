@@ -1,45 +1,31 @@
 import {spawnSync} from 'node:child_process';
 import {existsSync} from 'node:fs';
-import {mkdir, readFile, readdir, rm, writeFile} from 'node:fs/promises';
+import {lstat, mkdir, readFile, readdir, rm} from 'node:fs/promises';
 import {dirname, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {expect, it} from 'vitest';
 import {generatedTestRoot} from './paths.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const tinygresDist = resolve(root, '../tinygres/dist');
+const tinygresRoot = resolve(root, '../tinygres');
 const output = generatedTestRoot;
-const packageOutput = resolve(output, 'package');
 const appOutput = resolve(output, 'app');
-const cli = resolve(root, 'dist/cli.js');
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 
-it.skipIf(!existsSync(resolve(tinygresDist, 'package.json')))(
+it.skipIf(!existsSync(resolve(tinygresRoot, 'package.json')))(
   'builds the generated app against an actual packed Tinygres package',
   async () => {
     await rm(output, {force: true, recursive: true});
-    await mkdir(packageOutput, {recursive: true});
-
-    const packed = JSON.parse(
-      run(
-        npm,
-        [
-          'pack',
-          tinygresDist,
-          '--ignore-scripts',
-          '--json',
-          '--pack-destination',
-          packageOutput,
-        ],
-        root,
-      ),
-    )[0];
-    const tarball = resolve(packageOutput, packed.filename);
+    await mkdir(output, {recursive: true});
 
     run(
-      process.execPath,
+      npm,
       [
-        cli,
+        '--prefix',
+        root,
+        'run',
+        'local',
+        '--',
         '--non-interactive',
         '--projectName',
         'app',
@@ -47,24 +33,31 @@ it.skipIf(!existsSync(resolve(tinygresDist, 'package.json')))(
         'false',
       ],
       output,
-      {CREATE_TINYGRES_DEPENDENCY: `file:${tarball}`},
     );
 
     const client = resolve(appOutput, 'client');
     const manifestPath = resolve(client, 'package.json');
     const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
-    expect(manifest.dependencies.tinygres).toBe(`file:${tarball}`);
+    const tinygresDependency = String(manifest.dependencies.tinygres);
+    expect(tinygresDependency).toMatch(/^file:\/\/\/.*tinygres-[^/]+\.tgz$/);
+    expect(existsSync(fileURLToPath(tinygresDependency))).toBe(true);
 
     run(npm, ['install', '--no-audit', '--no-fund'], client);
+    expect(
+      (await lstat(resolve(client, 'node_modules/tinygres'))).isSymbolicLink(),
+    ).toBe(false);
+    const installedManifest = JSON.parse(
+      await readFile(
+        resolve(client, 'node_modules/tinygres/package.json'),
+        'utf8',
+      ),
+    );
+    expect(installedManifest.name).toBe('tinygres');
+
     run(npm, ['run', 'build'], client);
 
     const assets = await readdir(resolve(client, 'dist/assets'));
     expect(assets.some((file) => file.endsWith('.wasm'))).toBe(true);
-
-    // Ensure the test never leaves its local tarball dependency in a reusable
-    // generated manifest if this fixture is inspected manually.
-    manifest.dependencies.tinygres = '^0.0.0';
-    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
   },
   120_000,
 );

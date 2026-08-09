@@ -31,3 +31,15 @@ npm test                # CLI, template, and package-boundary tests
 npm run test:generated  # generated app install and production Vite build
 npm run test:e2e        # generated app build plus real Chromium Worker/WASM flow
 ```
+
+When this repository and `tinygres` are neighboring directories, run the
+generator against the current Tinygres source from their shared parent:
+
+```sh
+npm --prefix create-tinygres run local
+```
+
+The local command builds both projects and packs Tinygres before starting the
+generator. Generated apps therefore install the same package shape that will be
+published, rather than linking directly to Tinygres's transient `dist/`
+directory. Any create-tinygres CLI options can be appended after `--`.

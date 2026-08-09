@@ -23,6 +23,7 @@
   },
   "scripts": {
     "build": "node build.js",
+    "local": "node scripts/local.mjs",
     "typecheck": "tsc --noEmit",
     "test": "npm run build && vitest run test/cli.test.ts",
     "test:generated": "npm run build && vitest run test/generated-app.test.ts",
