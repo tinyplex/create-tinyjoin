@@ -1,0 +1,21 @@
+# {{projectName}}
+
+A Tinygres starter application built with TypeScript and Vite.
+
+## Start it
+
+```sh
+cd client
+npm install
+npm run dev
+```
+
+The app creates Tinygres in its default dedicated module worker, loads a small
+in-memory snapshot, and runs a parameterized PostgreSQL-shaped query locally.
+The button simulates a normalized incoming server change so you can see table
+invalidation and re-querying end to end.
+
+This starter is deliberately read-only and network-free. `replaceTable` and
+`applyBatch` are source-integration APIs, not application write APIs. It does
+not yet configure Supabase, persistence, upstream writes, or complete
+PostgreSQL SQL compatibility.

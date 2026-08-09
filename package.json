@@ -1,0 +1,45 @@
+{
+  "name": "create-tinygres",
+  "version": "0.0.0",
+  "author": "jamesgpearce",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tinyplex/create-tinygres.git"
+  },
+  "license": "MIT",
+  "description": "Scaffold a Tinygres worker and WebAssembly demo application.",
+  "keywords": [
+    "postgresql",
+    "local-first",
+    "webassembly",
+    "web-worker",
+    "app generator",
+    "scaffolding"
+  ],
+  "private": true,
+  "type": "module",
+  "bin": {
+    "create-tinygres": "./cli.js"
+  },
+  "scripts": {
+    "build": "node build.js",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && vitest run test/cli.test.ts",
+    "test:generated": "npm run build && vitest run test/generated-app.test.ts",
+    "test:e2e": "npm run test:generated && playwright test",
+    "prePublishPackage": "npm run typecheck && npm test && npm run test:e2e"
+  },
+  "dependencies": {
+    "tinycreate": "^1.0.8"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@types/node": "^26.2.0",
+    "esbuild": "^0.28.1",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
+  }
+}
