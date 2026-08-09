@@ -1,8 +1,5 @@
 node_modules/
 dist/
-test/.test-output/
-playwright-report/
-test-results/
 *.tgz
 *.log
 .DS_Store

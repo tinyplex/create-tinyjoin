@@ -4,10 +4,11 @@ import {mkdir, readFile, readdir, rm, writeFile} from 'node:fs/promises';
 import {dirname, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {expect, it} from 'vitest';
+import {generatedTestRoot} from './paths.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const tinygresDist = resolve(root, '../tinygres/dist');
-const output = resolve(root, 'test/.test-output/generated');
+const output = generatedTestRoot;
 const packageOutput = resolve(output, 'package');
 const appOutput = resolve(output, 'app');
 const cli = resolve(root, 'dist/cli.js');

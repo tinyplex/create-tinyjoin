@@ -1,16 +1,20 @@
 import {spawnSync} from 'node:child_process';
-import {mkdir, readFile, readdir, rm} from 'node:fs/promises';
-import {dirname, relative, resolve} from 'node:path';
+import {mkdir, mkdtemp, readFile, readdir, rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {dirname, join, relative, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {beforeEach, describe, expect, it} from 'vitest';
+import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const output = resolve(root, 'test/.test-output/cli');
 const cli = resolve(root, 'dist/cli.js');
+let output: string;
 
 beforeEach(async () => {
+  output = await mkdtemp(join(tmpdir(), 'create-tinygres-cli-'));
+});
+
+afterEach(async () => {
   await rm(output, {force: true, recursive: true});
-  await mkdir(output, {recursive: true});
 });
 
 describe('create-tinygres CLI', () => {
