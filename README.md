@@ -28,7 +28,7 @@ publishable `create-tinygres` package under `dist/`.
 ```sh
 npm run typecheck       # generator and test TypeScript
 npm test                # CLI, template, and package-boundary tests
-npm run test:generated  # generated app install and production Vite build
+npm run test:generated  # generated app against the published TinyGres package
 npm run test:e2e        # generated app build plus real Chromium Worker/WASM flow
 ```
 

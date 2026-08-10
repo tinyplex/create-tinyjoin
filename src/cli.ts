@@ -73,7 +73,7 @@ const config = {
       installAndRun:
         answers.installAndRun === true || answers.installAndRun === 'true',
       tinygresDependency:
-        process.env.CREATE_TINYGRES_DEPENDENCY ?? '^0.0.0',
+        process.env.CREATE_TINYGRES_DEPENDENCY ?? '^0.0.1',
     };
   },
   getFiles: () => [

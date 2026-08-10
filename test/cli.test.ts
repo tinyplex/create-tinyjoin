@@ -79,6 +79,21 @@ describe('create-tinygres CLI', () => {
     expect(source).not.toContain('../src');
   });
 
+  it('targets the published TinyGres release by default', async () => {
+    run([
+      '--non-interactive',
+      '--projectName',
+      'published',
+      '--installAndRun',
+      'false',
+    ]);
+
+    const manifest = JSON.parse(
+      await readFile(resolve(output, 'published/client/package.json'), 'utf8'),
+    );
+    expect(manifest.dependencies.tinygres).toBe('^0.0.1');
+  });
+
   it('rejects path-like and existing project names', async () => {
     expect(
       run(['--non-interactive', '--projectName', '../escape'], {}, false).status,

@@ -1,5 +1,4 @@
 import {spawnSync} from 'node:child_process';
-import {existsSync} from 'node:fs';
 import {lstat, mkdir, readFile, readdir, rm} from 'node:fs/promises';
 import {dirname, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -7,25 +6,21 @@ import {expect, it} from 'vitest';
 import {generatedTestRoot} from './paths.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const tinygresRoot = resolve(root, '../tinygres');
 const output = generatedTestRoot;
 const appOutput = resolve(output, 'app');
+const cli = resolve(root, 'dist/cli.js');
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 
-it.skipIf(!existsSync(resolve(tinygresRoot, 'package.json')))(
-  'builds the generated app against an actual packed TinyGres package',
+it(
+  'builds the generated app against the published TinyGres package',
   async () => {
     await rm(output, {force: true, recursive: true});
     await mkdir(output, {recursive: true});
 
     run(
-      npm,
+      process.execPath,
       [
-        '--prefix',
-        root,
-        'run',
-        'local',
-        '--',
+        cli,
         '--non-interactive',
         '--projectName',
         'app',
@@ -38,9 +33,7 @@ it.skipIf(!existsSync(resolve(tinygresRoot, 'package.json')))(
     const client = resolve(appOutput, 'client');
     const manifestPath = resolve(client, 'package.json');
     const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
-    const tinygresDependency = String(manifest.dependencies.tinygres);
-    expect(tinygresDependency).toMatch(/^file:\/\/\/.*tinygres-[^/]+\.tgz$/);
-    expect(existsSync(fileURLToPath(tinygresDependency))).toBe(true);
+    expect(manifest.dependencies.tinygres).toBe('^0.0.1');
 
     run(npm, ['install', '--no-audit', '--no-fund'], client);
     expect(
@@ -53,6 +46,7 @@ it.skipIf(!existsSync(resolve(tinygresRoot, 'package.json')))(
       ),
     );
     expect(installedManifest.name).toBe('tinygres');
+    expect(installedManifest.version).toBe('0.0.1');
 
     run(npm, ['run', 'build'], client);
 
