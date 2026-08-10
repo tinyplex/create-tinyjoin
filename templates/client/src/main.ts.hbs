@@ -1,7 +1,7 @@
 import './style.css';
 
 import {
-  createTinygresClient,
+  createClient,
   type ChangeBatch,
   type TableSchema,
 } from 'tinygres';
@@ -56,7 +56,7 @@ let invalidations = 0;
 let simulatedChanges = 0;
 
 async function boot(): Promise<void> {
-  const database = createTinygresClient({schemas: [postsSchema]});
+  const database = createClient({schemas: [postsSchema]});
   await database.ready();
   await database.replaceTable(postsSchema, initialPosts);
   await renderQuery(database);
@@ -139,7 +139,7 @@ async function boot(): Promise<void> {
 }
 
 async function renderQuery(
-  database: ReturnType<typeof createTinygresClient>,
+  database: ReturnType<typeof createClient>,
 ): Promise<void> {
   const startedAt = performance.now();
   const result = await database.query<Post>(
@@ -170,7 +170,7 @@ function showError(error: unknown): void {
   const message = error instanceof Error ? error.message : String(error);
   stateElement.textContent = 'Failed';
   stateElement.dataset.ready = 'false';
-  statusElement.textContent = 'The Tinygres starter flow failed.';
+  statusElement.textContent = 'The TinyGres starter flow failed.';
   errorElement.hidden = false;
   errorElement.textContent = message;
   applyButton.disabled = true;

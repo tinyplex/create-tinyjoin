@@ -7,7 +7,7 @@
     "url": "git+https://github.com/tinyplex/create-tinygres.git"
   },
   "license": "MIT",
-  "description": "Scaffold a Tinygres worker and WebAssembly demo application.",
+  "description": "Scaffold a TinyGres worker and WebAssembly demo application.",
   "keywords": [
     "postgresql",
     "local-first",

@@ -1,6 +1,6 @@
 # create-tinygres
 
-Scaffold a small TypeScript and Vite application that runs Tinygres in a
+Scaffold a small TypeScript and Vite application that runs TinyGres in a
 dedicated Web Worker.
 
 ```sh
@@ -33,13 +33,13 @@ npm run test:e2e        # generated app build plus real Chromium Worker/WASM flo
 ```
 
 When this repository and `tinygres` are neighboring directories, run the
-generator against the current Tinygres source from their shared parent:
+generator against the current TinyGres source from their shared parent:
 
 ```sh
 npm --prefix create-tinygres run local
 ```
 
-The local command builds both projects and packs Tinygres before starting the
+The local command builds both projects and packs TinyGres before starting the
 generator. Generated apps therefore install the same package shape that will be
-published, rather than linking directly to Tinygres's transient `dist/`
+published, rather than linking directly to TinyGres's transient `dist/`
 directory. Any create-tinygres CLI options can be appended after `--`.

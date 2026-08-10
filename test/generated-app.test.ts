@@ -13,7 +13,7 @@ const appOutput = resolve(output, 'app');
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 
 it.skipIf(!existsSync(resolve(tinygresRoot, 'package.json')))(
-  'builds the generated app against an actual packed Tinygres package',
+  'builds the generated app against an actual packed TinyGres package',
   async () => {
     await rm(output, {force: true, recursive: true});
     await mkdir(output, {recursive: true});

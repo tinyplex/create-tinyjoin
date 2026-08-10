@@ -27,7 +27,7 @@ const optionCatalog = {
 if (args.includes('--help') || args.includes('-h')) {
   console.log(`create-tinygres
 
-Interactively scaffold a Tinygres application:
+Interactively scaffold a TinyGres application:
   npm create tinygres@latest
 
 Run non-interactively:
@@ -46,7 +46,7 @@ if (args.includes('--list-options')) {
 }
 
 const config = {
-  welcomeMessage: '🎉 Welcome to Tinygres!\n',
+  welcomeMessage: '🎉 Welcome to TinyGres!\n',
   questions: [
     {
       type: 'text' as const,

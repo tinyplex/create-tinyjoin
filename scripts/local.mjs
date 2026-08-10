@@ -14,7 +14,7 @@ const cache = resolve(
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 
 if (!existsSync(resolve(tinygresRoot, 'package.json'))) {
-  throw new Error(`Expected a sibling Tinygres repository at ${tinygresRoot}`);
+  throw new Error(`Expected a sibling TinyGres repository at ${tinygresRoot}`);
 }
 
 run(npm, ['run', 'build'], tinygresRoot, 'inherit');
@@ -40,14 +40,14 @@ const [packed] = JSON.parse(
 );
 
 if (!packed || typeof packed.filename !== 'string') {
-  throw new Error('npm pack did not report a Tinygres tarball');
+  throw new Error('npm pack did not report a TinyGres tarball');
 }
 
 const tarball = resolve(cache, packed.filename);
 if (!existsSync(tarball)) {
   throw new Error(`npm pack did not create ${tarball}`);
 }
-console.log(`Using local Tinygres package ${tarball}\n`);
+console.log(`Using local TinyGres package ${tarball}\n`);
 
 run(
   process.execPath,

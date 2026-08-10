@@ -20,6 +20,7 @@ afterEach(async () => {
 describe('create-tinygres CLI', () => {
   it('documents its automation surface', () => {
     const help = run(['--help']);
+    expect(help.stdout).toContain('TinyGres');
     expect(help.stdout).toContain('npm create tinygres@latest');
     expect(help.stdout).toContain('--non-interactive');
 
@@ -34,7 +35,7 @@ describe('create-tinygres CLI', () => {
     });
   });
 
-  it('generates the Tinygres starter without duplicating a built demo', async () => {
+  it('generates the TinyGres starter without duplicating a built demo', async () => {
     run(
       [
         '--non-interactive',
@@ -68,9 +69,12 @@ describe('create-tinygres CLI', () => {
       dependencies: {tinygres: '9.9.9-test'},
     });
 
+    const html = await readFile(resolve(project, 'client/index.html'), 'utf8');
+    expect(html).toContain('<h1>TinyGres</h1>');
+
     const source = await readFile(resolve(project, 'client/src/main.ts'), 'utf8');
     expect(source).toContain("from 'tinygres'");
-    expect(source).toContain('createTinygresClient');
+    expect(source).toContain('createClient');
     expect(source).toContain('database.applyBatch(batch)');
     expect(source).not.toContain('../src');
   });
@@ -97,6 +101,7 @@ describe('create-tinygres CLI', () => {
     expect(manifest.private).toBeUndefined();
     expect(manifest.scripts).toBeUndefined();
     expect(manifest.devDependencies).toBeUndefined();
+    expect(manifest.description).toContain('TinyGres');
     expect(manifest.bin).toEqual({'create-tinygres': 'cli.js'});
     expect(manifest.files).toContain('templates');
   });
