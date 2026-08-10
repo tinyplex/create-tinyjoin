@@ -32,14 +32,22 @@ npm run test:generated  # generated app against the published TinyGres package
 npm run test:e2e        # generated app build plus real Chromium Worker/WASM flow
 ```
 
-When this repository and `tinygres` are neighboring directories, run the
-generator against the current TinyGres source from their shared parent:
+Run the local generator from this repository's parent directory with:
 
 ```sh
 npm --prefix create-tinygres run local
 ```
 
-The local command builds both projects and packs TinyGres before starting the
-generator. Generated apps therefore install the same package shape that will be
-published, rather than linking directly to TinyGres's transient `dist/`
-directory. Any create-tinygres CLI options can be appended after `--`.
+This builds only the generator. The generated app installs the published
+TinyGres package, including its precompiled WASM, so Rust is not required. Any
+create-tinygres CLI options can be appended after `--`.
+
+To test unpublished changes from a neighboring TinyGres source repository, use
+the explicitly separate source-integration command:
+
+```sh
+npm --prefix create-tinygres run local:source
+```
+
+That command builds and packs the sibling TinyGres repository before starting
+the generator, so it does require the TinyGres Rust toolchain.

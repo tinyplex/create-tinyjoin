@@ -24,11 +24,13 @@
   "scripts": {
     "build": "node build.js",
     "local": "node scripts/local.mjs",
+    "local:source": "node scripts/local-source.mjs",
     "typecheck": "tsc --noEmit",
     "test": "npm run build && vitest run test/cli.test.ts",
     "test:generated": "npm run build && vitest run test/generated-app.test.ts",
     "test:e2e": "npm run test:generated && playwright test",
-    "prePublishPackage": "npm run typecheck && npm test && npm run test:e2e"
+    "prePublishPackage": "npm run typecheck && npm test && npm run test:e2e",
+    "publishPackage": "npm run prePublishPackage && npm publish ./dist"
   },
   "dependencies": {
     "tinycreate": "^1.0.8"

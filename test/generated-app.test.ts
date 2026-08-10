@@ -8,7 +8,6 @@ import {generatedTestRoot} from './paths.js';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const output = generatedTestRoot;
 const appOutput = resolve(output, 'app');
-const cli = resolve(root, 'dist/cli.js');
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 
 it(
@@ -18,9 +17,13 @@ it(
     await mkdir(output, {recursive: true});
 
     run(
-      process.execPath,
+      npm,
       [
-        cli,
+        '--prefix',
+        root,
+        'run',
+        'local',
+        '--',
         '--non-interactive',
         '--projectName',
         'app',
