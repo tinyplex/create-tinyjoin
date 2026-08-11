@@ -36,7 +36,7 @@ it(
     const client = resolve(appOutput, 'client');
     const manifestPath = resolve(client, 'package.json');
     const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
-    expect(manifest.dependencies.tinygres).toBe('^0.0.1');
+    expect(manifest.dependencies.tinygres).toBe('^0.0.2');
 
     run(npm, ['install', '--no-audit', '--no-fund'], client);
     expect(
@@ -49,7 +49,7 @@ it(
       ),
     );
     expect(installedManifest.name).toBe('tinygres');
-    expect(installedManifest.version).toBe('0.0.1');
+    expect(installedManifest.version).toBe('0.0.2');
 
     run(npm, ['run', 'build'], client);
 
