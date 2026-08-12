@@ -1,32 +1,32 @@
-import {spawnSync} from 'node:child_process';
-import {mkdir, mkdtemp, readFile, readdir, rm} from 'node:fs/promises';
-import {tmpdir} from 'node:os';
-import {dirname, join, relative, resolve} from 'node:path';
-import {fileURLToPath} from 'node:url';
-import {afterEach, beforeEach, describe, expect, it} from 'vitest';
+import { spawnSync } from "node:child_process";
+import { mkdir, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const cli = resolve(root, 'dist/cli.js');
+const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const cli = resolve(root, "dist/cli.js");
 let output: string;
 
 beforeEach(async () => {
-  output = await mkdtemp(join(tmpdir(), 'create-tinygres-cli-'));
+  output = await mkdtemp(join(tmpdir(), "create-tinygres-cli-"));
 });
 
 afterEach(async () => {
-  await rm(output, {force: true, recursive: true});
+  await rm(output, { force: true, recursive: true });
 });
 
-describe('create-tinygres CLI', () => {
-  it('documents its automation surface', () => {
-    const help = run(['--help']);
-    expect(help.stdout).toContain('TinyGres');
-    expect(help.stdout).toContain('npm create tinygres@latest');
-    expect(help.stdout).toContain('--non-interactive');
+describe("create-tinygres CLI", () => {
+  it("documents its automation surface", () => {
+    const help = run(["--help"]);
+    expect(help.stdout).toContain("TinyGres");
+    expect(help.stdout).toContain("npm create tinygres@latest");
+    expect(help.stdout).toContain("--non-interactive");
 
-    const catalog = JSON.parse(run(['--list-options']).stdout);
+    const catalog = JSON.parse(run(["--list-options"]).stdout);
     expect(catalog.options).toEqual({
-      projectName: {type: 'string', required: true},
+      projectName: { type: "string", required: true },
       installAndRun: {
         values: [true, false],
         required: true,
@@ -35,90 +35,94 @@ describe('create-tinygres CLI', () => {
     });
   });
 
-  it('generates the TinyGres starter without duplicating a built demo', async () => {
+  it("generates the TinyGres starter without duplicating a built demo", async () => {
     run(
       [
-        '--non-interactive',
-        '--projectName',
-        'example',
-        '--installAndRun',
-        'false',
+        "--non-interactive",
+        "--projectName",
+        "example",
+        "--installAndRun",
+        "false",
       ],
-      {CREATE_TINYGRES_DEPENDENCY: '9.9.9-test'},
+      { CREATE_TINYGRES_DEPENDENCY: "9.9.9-test" },
     );
 
-    const project = resolve(output, 'example');
+    const project = resolve(output, "example");
     expect(await listFiles(project)).toEqual([
-      'AGENTS.md',
-      'README.md',
-      'client/.gitignore',
-      'client/index.html',
-      'client/package.json',
-      'client/src/main.ts',
-      'client/src/style.css',
-      'client/src/vite-env.d.ts',
-      'client/tsconfig.json',
+      "AGENTS.md",
+      "README.md",
+      "client/.gitignore",
+      "client/index.html",
+      "client/package.json",
+      "client/src/main.ts",
+      "client/src/style.css",
+      "client/src/vite-env.d.ts",
+      "client/tsconfig.json",
     ]);
 
     const manifest = JSON.parse(
-      await readFile(resolve(project, 'client/package.json'), 'utf8'),
+      await readFile(resolve(project, "client/package.json"), "utf8"),
     );
     expect(manifest).toMatchObject({
-      name: 'example-client',
+      name: "example-client",
       private: true,
-      dependencies: {tinygres: '9.9.9-test'},
+      dependencies: { tinygres: "9.9.9-test" },
     });
 
-    const html = await readFile(resolve(project, 'client/index.html'), 'utf8');
-    expect(html).toContain('<h1>TinyGres</h1>');
+    const html = await readFile(resolve(project, "client/index.html"), "utf8");
+    expect(html).toContain("<h1>TinyGres</h1>");
 
-    const source = await readFile(resolve(project, 'client/src/main.ts'), 'utf8');
+    const source = await readFile(
+      resolve(project, "client/src/main.ts"),
+      "utf8",
+    );
     expect(source).toContain("from 'tinygres'");
-    expect(source).toContain('createClient');
-    expect(source).toContain('database.applyBatch(batch)');
-    expect(source).not.toContain('../src');
+    expect(source).toContain("createClient");
+    expect(source).toContain("database.applyBatch(batch)");
+    expect(source).not.toContain("../src");
   });
 
-  it('targets the published TinyGres release by default', async () => {
+  it("targets the published TinyGres release by default", async () => {
     run([
-      '--non-interactive',
-      '--projectName',
-      'published',
-      '--installAndRun',
-      'false',
+      "--non-interactive",
+      "--projectName",
+      "published",
+      "--installAndRun",
+      "false",
     ]);
 
     const manifest = JSON.parse(
-      await readFile(resolve(output, 'published/client/package.json'), 'utf8'),
+      await readFile(resolve(output, "published/client/package.json"), "utf8"),
     );
-    expect(manifest.dependencies.tinygres).toBe('^0.0.2');
+    expect(manifest.dependencies.tinygres).toBe("^0.0.3");
   });
 
-  it('rejects path-like and existing project names', async () => {
+  it("rejects path-like and existing project names", async () => {
     expect(
-      run(['--non-interactive', '--projectName', '../escape'], {}, false).status,
+      run(["--non-interactive", "--projectName", "../escape"], {}, false)
+        .status,
     ).not.toBe(0);
 
-    await mkdir(resolve(output, 'existing'));
+    await mkdir(resolve(output, "existing"));
     const existing = run(
-      ['--non-interactive', '--projectName', 'existing'],
+      ["--non-interactive", "--projectName", "existing"],
       {},
       false,
     );
     expect(existing.status).not.toBe(0);
-    expect(`${existing.stdout}${existing.stderr}`).toContain('already exists');
+    expect(`${existing.stdout}${existing.stderr}`).toContain("already exists");
   });
 
-  it('builds a public generator package under dist', async () => {
+  it("builds a public generator package under dist", async () => {
     const manifest = JSON.parse(
-      await readFile(resolve(root, 'dist/package.json'), 'utf8'),
+      await readFile(resolve(root, "dist/package.json"), "utf8"),
     );
     expect(manifest.private).toBeUndefined();
     expect(manifest.scripts).toBeUndefined();
     expect(manifest.devDependencies).toBeUndefined();
-    expect(manifest.description).toContain('TinyGres');
-    expect(manifest.bin).toEqual({'create-tinygres': 'cli.js'});
-    expect(manifest.files).toContain('templates');
+    expect(manifest.description).toContain("TinyGres");
+    expect(manifest.bin).toEqual({ "create-tinygres": "cli.js" });
+    expect(manifest.files).toContain("templates");
   });
 });
 
@@ -129,8 +133,8 @@ function run(
 ) {
   const result = spawnSync(process.execPath, [cli, ...args], {
     cwd: output,
-    encoding: 'utf8',
-    env: {...process.env, ...environment},
+    encoding: "utf8",
+    env: { ...process.env, ...environment },
   });
   if (expectSuccess && result.status !== 0) {
     throw new Error(`${result.stdout}${result.stderr}`);
@@ -139,13 +143,16 @@ function run(
 }
 
 async function listFiles(directory: string): Promise<string[]> {
-  const entries = await readdir(directory, {recursive: true, withFileTypes: true});
+  const entries = await readdir(directory, {
+    recursive: true,
+    withFileTypes: true,
+  });
   return entries
     .filter((entry) => entry.isFile())
     .map((entry) =>
       relative(directory, resolve(entry.parentPath, entry.name)).replaceAll(
-        '\\',
-        '/',
+        "\\",
+        "/",
       ),
     )
     .sort();

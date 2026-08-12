@@ -1,6 +1,6 @@
 {
   "name": "create-tinygres",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "author": "jamesgpearce",
   "repository": {
     "type": "git",
@@ -29,7 +29,7 @@
     "test": "npm run build && vitest run test/cli.test.ts",
     "test:generated": "npm run build && vitest run test/generated-app.test.ts",
     "test:e2e": "npm run test:generated && playwright test",
-    "prePublishPackage": "npm run typecheck && npm test && npm run test:e2e",
+    "prePublishPackage": "npm i && npm run typecheck && npm test && npm run test:e2e",
     "publishPackage": "npm run prePublishPackage && npm publish ./dist"
   },
   "dependencies": {
