@@ -1,0 +1,173 @@
+import './style.css';
+
+import {createClient, type SyncState} from 'tinygres';
+
+type Post = {
+  id: number;
+  title: string;
+};
+
+const stateElement = element<HTMLElement>('[data-testid="state"]');
+const syncPhaseElement = element<HTMLElement>('[data-testid="sync-phase"]');
+const revisionElement = element<HTMLElement>('[data-testid="revision"]');
+const postsElement = element<HTMLUListElement>('[data-testid="posts"]');
+const latencyElement = element<HTMLElement>('[data-testid="latency"]');
+const invalidationsElement = element<HTMLElement>(
+  '[data-testid="invalidations"]',
+);
+const statusElement = element<HTMLElement>('[data-testid="status"]');
+const errorElement = element<HTMLElement>('[data-testid="error"]');
+
+let invalidations = 0;
+
+async function boot(): Promise<void> {
+  const url = requiredEnvironmentValue(
+    'VITE_SUPABASE_URL',
+    import.meta.env.VITE_SUPABASE_URL,
+  );
+  const publishableKey = requiredEnvironmentValue(
+    'VITE_SUPABASE_PUBLISHABLE_KEY',
+    import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+  );
+
+  const database = createClient({
+    {{#if usesOpfs}}
+    storage: {kind: 'opfs', name: '{{storageName}}'},
+    {{/if}}
+    source: {
+      kind: 'supabase',
+      url,
+      publishableKey,
+      tables: [
+        {
+          schema: 'public',
+          table: 'tinygres_posts',
+          primaryKey: ['id'],
+          columns: ['id', 'title', 'published'],
+        },
+      ],
+    },
+  });
+
+  await database.ready();
+
+  const unsubscribeFromTables = database.subscribe(
+    {tables: ['tinygres_posts']},
+    (event) => {
+      invalidations += 1;
+      invalidationsElement.textContent = String(invalidations);
+      statusElement.textContent = `Revision ${event.revision} invalidated tinygres_posts; re-querying the local replica…`;
+      void renderQuery(database).then(() => {
+        statusElement.textContent = `Re-queried tinygres_posts after invalidation at revision ${event.revision}.`;
+      }, showError);
+    },
+  );
+  const unsubscribeFromSync = database.subscribeToSyncState((syncState) => {
+    renderSyncState(syncState);
+  });
+
+  window.addEventListener(
+    'pagehide',
+    () => {
+      unsubscribeFromTables();
+      unsubscribeFromSync();
+      void database.close();
+    },
+    {once: true},
+  );
+
+  stateElement.textContent = 'Ready';
+  stateElement.dataset.ready = 'true';
+  statusElement.textContent =
+    'Local cache ready; synchronizing public.tinygres_posts…';
+
+  // ready() restores OPFS before it waits on the network, so cached rows can be
+  // rendered immediately. With memory storage this first result is simply empty.
+  await renderQuery(database);
+
+  await database.whenSynced({timeoutMs: 30_000});
+  await renderQuery(database);
+  statusElement.textContent =
+    'Supabase snapshot reconciled. Realtime invalidations are live.';
+}
+
+async function renderQuery(
+  database: ReturnType<typeof createClient>,
+): Promise<void> {
+  const startedAt = performance.now();
+  const result = await database.query<Post>(
+    'SELECT id, title FROM tinygres_posts WHERE published = $1',
+    [true],
+  );
+  const elapsed = performance.now() - startedAt;
+
+  revisionElement.textContent = String(result.revision);
+  latencyElement.textContent = `${result.rows.length} rows returned in ${elapsed.toFixed(2)} ms round-trip`;
+  if (result.rows.length === 0) {
+    const empty = document.createElement('li');
+    empty.className = 'empty';
+    empty.textContent = 'No cached published posts yet.';
+    postsElement.replaceChildren(empty);
+    return;
+  }
+
+  postsElement.replaceChildren(
+    ...result.rows.map((post) => {
+      const item = document.createElement('li');
+      item.dataset.postId = String(post.id);
+
+      const title = document.createElement('strong');
+      title.textContent = post.title;
+      const id = document.createElement('span');
+      id.textContent = `#${post.id}`;
+
+      item.append(title, id);
+      return item;
+    }),
+  );
+}
+
+function renderSyncState(syncState: SyncState): void {
+  syncPhaseElement.textContent = syncState.phase;
+  syncPhaseElement.dataset.phase = syncState.phase;
+  if (syncState.phase === 'error') {
+    showError(
+      new Error(
+        syncState.error?.message ?? 'Supabase synchronization failed',
+      ),
+    );
+    return;
+  }
+  if (syncState.phase !== 'idle') {
+    statusElement.textContent = `Supabase sync phase: ${syncState.phase}.`;
+  }
+}
+
+function requiredEnvironmentValue(name: string, value: string | undefined): string {
+  const normalized = value?.trim();
+  if (!normalized || normalized.includes('your-project')) {
+    throw new Error(
+      `Missing ${name}. Set it in client/.env.local, then restart the Vite server.`,
+    );
+  }
+  return normalized;
+}
+
+function showError(error: unknown): void {
+  const message = error instanceof Error ? error.message : String(error);
+  stateElement.textContent = 'Failed';
+  stateElement.dataset.ready = 'false';
+  statusElement.textContent = 'The TinyGres Supabase starter flow failed.';
+  errorElement.hidden = false;
+  errorElement.textContent = `${message}\n\nCheck client/.env.local, then run supabase.sql in the Supabase SQL editor and restart this app.`;
+}
+
+function element<ElementType extends Element>(selector: string): ElementType {
+  const match = document.querySelector<ElementType>(selector);
+  if (!match) {
+    throw new Error(`Starter element not found: ${selector}`);
+  }
+  return match;
+}
+
+void boot().catch(showError);

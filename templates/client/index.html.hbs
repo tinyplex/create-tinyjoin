@@ -5,28 +5,43 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="A TinyGres Worker and WebAssembly starter application"
+      content="{{#if isSupabase}}A local TinyGres replica synchronized from Supabase{{else}}A TinyGres Worker and WebAssembly starter application{{/if}}"
     />
     <title>{{projectName}} · TinyGres</title>
   </head>
   <body>
     <main>
       <header class="hero">
-        <p class="eyebrow">Read-only prototype</p>
+        <p class="eyebrow">{{#if isSupabase}}Supabase replica{{else}}Read-only prototype{{/if}}</p>
         <h1>TinyGres</h1>
         <p class="lede">
+          {{#if isSupabase}}
+          Query a read-only Supabase replica locally in a dedicated Worker and
+          Rust/WASM.
+          {{else}}
           A tiny PostgreSQL-shaped query cache running entirely in a dedicated
           Worker and Rust/WASM.
+          {{/if}}
         </p>
       </header>
 
       <section class="card runtime" aria-labelledby="runtime-title">
         <div>
           <p class="label" id="runtime-title">Runtime</p>
-          <p class="runtime-value">Dedicated Worker + Rust/WASM</p>
+          <p class="runtime-value">Dedicated Worker + Rust/WASM · {{#if usesOpfs}}OPFS{{else}}memory{{/if}}</p>
         </div>
         <span class="state" data-testid="state">Starting…</span>
       </section>
+
+      {{#if isSupabase}}
+      <section class="card runtime" aria-labelledby="sync-title">
+        <div>
+          <p class="label" id="sync-title">Supabase synchronization</p>
+          <p class="runtime-value">public.tinygres_posts</p>
+        </div>
+        <span class="state sync-phase" data-testid="sync-phase">idle</span>
+      </section>
+      {{/if}}
 
       <section class="card" aria-labelledby="query-title">
         <div class="section-heading">
@@ -39,11 +54,12 @@
           </p>
         </div>
 
-        <code>SELECT id, title, author FROM posts WHERE published = $1</code>
+        <code>SELECT id, title{{#unless isSupabase}}, author{{/unless}} FROM {{#if isSupabase}}tinygres_posts{{else}}posts{{/if}} WHERE published = $1</code>
         <ul class="posts" data-testid="posts" aria-live="polite"></ul>
         <p class="latency" data-testid="latency">Waiting for the worker…</p>
       </section>
 
+      {{#unless isSupabase}}
       <section class="card change" aria-labelledby="change-title">
         <div>
           <p class="label">Replication seam</p>
@@ -58,6 +74,7 @@
           Simulate server change
         </button>
       </section>
+      {{/unless}}
 
       <section class="card activity" aria-labelledby="activity-title">
         <div class="section-heading">
@@ -65,14 +82,18 @@
           <p><strong data-testid="invalidations">0</strong> invalidations</p>
         </div>
         <p class="status" data-testid="status" aria-live="polite">
-          Loading the WebAssembly engine…
+          {{#if isSupabase}}Restoring the local cache…{{else}}Loading the WebAssembly engine…{{/if}}
         </p>
         <p class="error" data-testid="error" hidden></p>
       </section>
 
       <footer>
-        In-memory only. No Supabase connection, persistence, or upstream writes
-        yet.
+        {{#if isSupabase}}
+        Read-only Supabase synchronization with {{#if usesOpfs}}persistent OPFS cache{{else}}an in-memory cache{{/if}}. No upstream writes.
+        {{else}}
+        {{#if usesOpfs}}Persistent OPFS cache{{else}}In-memory only{{/if}}. No
+        Supabase connection or upstream writes.
+        {{/if}}
       </footer>
     </main>
     <script type="module" src="/src/main.ts"></script>

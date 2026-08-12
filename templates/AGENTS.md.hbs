@@ -3,8 +3,25 @@
 This is a generated TinyGres TypeScript/Vite starter.
 
 - Work in `client/` and run `npm run dev` there.
-- TinyGres owns its in-memory data and query engine inside a dedicated Worker.
+- TinyGres owns its {{#if usesOpfs}}OPFS-backed{{else}}in-memory{{/if}} data and
+  query engine inside a dedicated Worker.
+{{#if isSupabase}}
+- The built-in read-only Supabase source owns snapshots and incoming changes for
+  `public.tinygres_posts`; do not call `replaceTable` or `applyBatch` from UI
+  code and do not invent an upstream-write path.
+- Keep the table mapping, `supabase.sql`, rendered query, RLS policy, replica
+  identity, and Realtime publication configuration aligned.
+- Browser configuration belongs in ignored `client/.env.local`. Keep only
+  placeholders in `.env.example`, and never expose a secret or service-role key.
+- Preserve immediate cached rendering after `ready()`, invalidation-driven
+  re-querying, explicit sync state, `whenSynced()`, and client cleanup.
+{{else}}
 - Treat `replaceTable` and `applyBatch` as read-only source integration seams,
   not as local application mutation APIs.
+{{#if usesOpfs}}
+- Preserve the stable `{{storageName}}` OPFS name and do not replace restored
+  rows with the demo seed on reload.
+{{/if}}
+{{/if}}
 - Preserve parameterized SQL and the explicit table schema.
 - Validate changes with `npm run build`.

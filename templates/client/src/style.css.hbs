@@ -98,6 +98,17 @@ h1 {
   color: #11673a;
 }
 
+.sync-phase[data-phase="live-best-effort"],
+.sync-phase[data-phase="live-durable"] {
+  background: #d8f6e4;
+  color: #11673a;
+}
+
+.sync-phase[data-phase="error"] {
+  background: #fee2e2;
+  color: #9d2525;
+}
+
 h2 {
   margin: 0;
   font-size: 1.15rem;
@@ -142,6 +153,11 @@ code {
 .posts span {
   color: #68736c;
   font-size: 0.85rem;
+}
+
+.posts .empty {
+  color: #68736c;
+  font-style: italic;
 }
 
 .latency {

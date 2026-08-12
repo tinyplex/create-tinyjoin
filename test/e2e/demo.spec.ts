@@ -7,7 +7,7 @@ test('the generated starter queries and invalidates through Worker/WASM', async 
 
   await expect(page.getByTestId('state')).toHaveText('Ready');
   await expect(page.getByTestId('status')).toContainText(
-    'initial snapshot is queryable locally',
+    'persisted snapshot is queryable locally',
   );
   await expect(page.getByTestId('revision')).toHaveText('1');
   await expect(page.locator('[data-post-id]')).toHaveCount(2);
@@ -25,5 +25,18 @@ test('the generated starter queries and invalidates through Worker/WASM', async 
   await expect(page.getByTestId('status')).toContainText(
     'Re-queried after invalidation at revision 2',
   );
+  await expect(page.getByTestId('error')).toBeHidden();
+
+  await page.reload();
+
+  await expect(page.getByTestId('state')).toHaveText('Ready');
+  await expect(page.getByTestId('revision')).toHaveText('2');
+  await expect(page.locator('[data-post-id="2"]')).toContainText(
+    'Worker invalidation #1',
+  );
+  await expect(page.getByTestId('status')).toContainText(
+    'persisted snapshot is queryable locally',
+  );
+  await expect(page.getByTestId('invalidations')).toHaveText('0');
   await expect(page.getByTestId('error')).toBeHidden();
 });

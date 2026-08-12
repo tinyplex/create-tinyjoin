@@ -2,7 +2,100 @@
 
 A TinyGres starter application built with TypeScript and Vite.
 
+This project was generated with the **{{adapter}}** adapter and **{{storage}}**
+storage.
+
 ## Start it
+
+{{#if isSupabase}}
+
+1. Open your Supabase project's SQL editor and run `supabase.sql`. The script
+   creates and seeds the disposable `public.tinygres_posts` demo table, grants
+   anonymous read access, enables row-level security, and adds the table to
+   Realtime.
+2. Check `client/.env.local`. The wizard put the browser-safe project URL and
+   publishable key there. Never replace the publishable key with a secret or
+   service-role key.
+3. Install and start the client:
+
+```sh
+cd client
+npm install
+npm run dev
+```
+
+If you edit `.env.local`, restart Vite so it loads the new values. Commit
+`.env.example`, but do not commit `.env.local`.
+
+## What the app demonstrates
+
+TinyGres restores its {{#if usesOpfs}}OPFS cache{{else}}in-memory replica{{/if}}
+inside a dedicated Worker, renders any locally available rows as soon as
+`ready()` resolves, and then snapshots `public.tinygres_posts` through the
+Supabase Data API. Supabase Realtime events invalidate the local table and the
+page re-runs its parameterized query. `whenSynced()` confirms that the complete
+remote baseline is live before the final reconciled render.
+
+The built-in Supabase source is deliberately read-only. It uses a browser-safe
+publishable key and assumes every row in this demo table is visible to the
+anonymous role through the table-wide `USING (true)` policy installed by
+`supabase.sql`. It does not send local writes upstream and does not support
+secret keys, authenticated per-user visibility, or complete PostgreSQL SQL
+compatibility.
+
+{{#if usesOpfs}}
+The logical OPFS cache name is `{{storageName}}`. TinyGres binds it to the
+Supabase URL, publishable key, and selected table contract so a changed source
+opens a different physical cache. If you change the database policy or
+publication without changing those values, also change the logical cache name
+or clear the old site data. OPFS requires a secure browser context and is
+reconstructable cache storage, not a backup.
+{{else}}
+Memory storage starts empty on every page load. The Supabase snapshot fills it
+again before synchronization becomes live.
+{{/if}}
+
+## Demo database cleanup
+
+The SQL file intentionally creates a narrowly named public demo table. Remove
+it when you are finished experimenting:
+
+```sql
+do $cleanup$
+declare
+  demo_table regclass := to_regclass('public.tinygres_posts');
+begin
+  if demo_table is not null then
+    if obj_description(demo_table, 'pg_class') is distinct from
+      'create-tinygres:v1 disposable public demo table'
+    then
+      raise exception using
+        message = 'Refusing to drop unowned public.tinygres_posts';
+    end if;
+    drop table public.tinygres_posts;
+  end if;
+
+  if exists (
+    select 1
+    from pg_publication
+    where pubname = 'supabase_realtime'
+      and obj_description(oid, 'pg_publication') =
+        'create-tinygres:v1 disposable demo publication'
+  ) and not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+  ) then
+    drop publication supabase_realtime;
+  end if;
+end
+$cleanup$;
+```
+
+The guarded publication cleanup runs only when this starter created the
+publication and it contains no remaining tables.
+
+{{else}}
 
 ```sh
 cd client
@@ -11,11 +104,22 @@ npm run dev
 ```
 
 The app creates TinyGres in its default dedicated module worker, loads a small
-in-memory snapshot, and runs a parameterized PostgreSQL-shaped query locally.
+{{#if usesOpfs}}persistent OPFS{{else}}in-memory{{/if}} snapshot, and runs a
+parameterized PostgreSQL-shaped query locally.
 The button simulates a normalized incoming server change so you can see table
 invalidation and re-querying end to end.
 
 This starter is deliberately read-only and network-free. `replaceTable` and
 `applyBatch` are source-integration APIs, not application write APIs. It does
-not yet configure Supabase, persistence, upstream writes, or complete
-PostgreSQL SQL compatibility.
+not configure Supabase, upstream writes, or complete PostgreSQL SQL
+compatibility.
+
+{{#if usesOpfs}}
+The OPFS cache is named `{{storageName}}`. Reloading restores it before the app
+queries, and the demo seed is installed only when the database is new. OPFS
+requires a secure browser context and is reconstructable cache storage, not a
+backup.
+{{else}}
+Memory storage starts with the same sample snapshot on every page load.
+{{/if}}
+{{/if}}

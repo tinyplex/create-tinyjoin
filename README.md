@@ -11,14 +11,34 @@ For agents and CI, every option can be supplied non-interactively:
 
 ```sh
 npm create tinygres@latest -- --non-interactive \
-  --projectName my-tinygres-app --installAndRun false
+  --projectName my-tinygres-app \
+  --adapter sample --storage memory \
+  --installAndRun false
 ```
 
 Use `--list-options` for the machine-readable option catalog or `--help` for
-usage. The generated starter is intentionally network-free: it loads a sample
-snapshot, runs parameterized SQL locally, and simulates one normalized incoming
-server change. Supabase credentials and persistent storage are not configured
-by the initial generator.
+usage. The wizard asks for two independent choices:
+
+- **Adapter:** a network-free sample dataset, or a read-only Supabase replica.
+- **Storage:** memory, or persistent browser OPFS.
+
+The sample adapter loads a small snapshot, runs parameterized SQL locally, and
+simulates one normalized incoming server change. The Supabase adapter asks for
+a browser-safe project URL and publishable key, writes them only to ignored
+`client/.env.local`, and generates `supabase.sql` for its disposable public demo
+table. For example:
+
+```sh
+npm create tinygres@latest -- --non-interactive \
+  --projectName my-tinygres-app \
+  --adapter supabase --storage opfs \
+  --supabaseUrl https://your-project.supabase.co \
+  --supabasePublishableKey sb_publishable_your-key \
+  --installAndRun false
+```
+
+Run the generated `supabase.sql` in the Supabase SQL editor before starting a
+Supabase-backed app. Never provide a secret or service-role key.
 
 This repository is a private development package. `npm run build` assembles the
 publishable `create-tinygres` package under `dist/`.
@@ -28,8 +48,8 @@ publishable `create-tinygres` package under `dist/`.
 ```sh
 npm run typecheck       # generator and test TypeScript
 npm test                # CLI, template, and package-boundary tests
-npm run test:generated  # generated app against the published TinyGres package
-npm run test:e2e        # generated app build plus real Chromium Worker/WASM flow
+npm run test:generated  # sample + Supabase apps against published TinyGres
+npm run test:e2e        # real Chromium Worker/WASM + Supabase protocol flows
 ```
 
 Run the local generator from this repository's parent directory with:
