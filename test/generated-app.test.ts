@@ -1,147 +1,82 @@
 import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { lstat, mkdir, readFile, readdir, rm } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
 import {
-  generatedSampleClient,
-  generatedSupabaseClient,
+  generatedMemoryClient,
+  generatedOpfsClient,
   generatedTestRoot,
 } from "./paths.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const tinygresRoot = resolve(root, "../tinygres");
 const output = generatedTestRoot;
 const npm = process.platform === "win32" ? "npm.cmd" : "npm";
-const supabaseUrl = "http://127.0.0.1:4176";
-const supabasePublishableKey = "sb_publishable_create_tinygres_e2e";
+let tinygresDependency: string;
 
 beforeAll(async () => {
   await rm(output, { force: true, recursive: true });
   await mkdir(output, { recursive: true });
+  tinygresDependency =
+    process.env.CREATE_TINYGRES_DEPENDENCY ?? (await packSiblingTinygres());
 });
 
 describe.sequential("generated apps", () => {
-  it("builds the sample app against the published TinyGres package", async () => {
-    generate([
-      "--projectName",
-      "app",
-      "--adapter",
-      "sample",
-      "--storage",
-      "opfs",
-    ]);
-    generate([
-      "--projectName",
-      "sample-memory-app",
-      "--adapter",
-      "sample",
-      "--storage",
-      "memory",
-    ]);
-
-    await installBuildAndCheck(generatedSampleClient);
-    await installBuildAndCheck(resolve(output, "sample-memory-app/client"));
-  }, 180_000);
-
-  it("builds the Supabase OPFS app against the published TinyGres package", async () => {
-    generate([
-      "--projectName",
-      "supabase-app",
-      "--adapter",
-      "supabase",
-      "--storage",
-      "opfs",
-      "--supabaseUrl",
-      supabaseUrl,
-      "--supabasePublishableKey",
-      supabasePublishableKey,
-    ]);
-    generate([
-      "--projectName",
-      "supabase-memory-app",
-      "--adapter",
-      "supabase",
-      "--storage",
-      "memory",
-      "--supabaseUrl",
-      supabaseUrl,
-      "--supabasePublishableKey",
-      supabasePublishableKey,
-    ]);
+  it("builds the memory and OPFS demos against current TinyGres", async () => {
+    generate("app", "opfs");
+    generate("memory-app", "memory");
 
     const source = await readFile(
-      resolve(generatedSupabaseClient, "src/main.ts"),
+      resolve(generatedOpfsClient, "src/main.ts"),
       "utf8",
     );
-    const environment = await readFile(
-      resolve(generatedSupabaseClient, ".env.local"),
-      "utf8",
-    );
-    const environmentExample = await readFile(
-      resolve(generatedSupabaseClient, ".env.example"),
-      "utf8",
-    );
-    const gitignore = await readFile(
-      resolve(generatedSupabaseClient, ".gitignore"),
-      "utf8",
-    );
-    const readme = await readFile(
-      resolve(generatedTestRoot, "supabase-app/README.md"),
-      "utf8",
-    );
-    const setupSql = await readFile(
-      resolve(generatedTestRoot, "supabase-app/supabase.sql"),
-      "utf8",
-    );
+    expect(source).toMatch(/\bcreate\s*\(/);
+    expect(source).toContain("database.exec(");
+    expect(source).toContain("database.query<");
+    expect(source).toContain("database.query<TaskRow>(TASK_QUERY, [1])");
+    expect(source).toContain("database.transaction(");
+    expect(source).toContain("database.subscribe(");
+    expect(source).toContain("database.close()");
+    expect(source).toContain("JOIN task_tags");
+    expect(source).toContain("JOIN tags");
     expect(source).toMatch(/storage:\s*\{\s*kind:\s*['"]opfs['"]/);
-    expect(source).toContain("tinygres_posts");
-    expect(source).not.toContain(supabaseUrl);
-    expect(source).not.toContain(supabasePublishableKey);
-    expect(environment).toContain(
-      `VITE_SUPABASE_URL=${JSON.stringify(new URL(supabaseUrl).href)}`,
-    );
-    expect(environment).toContain(
-      `VITE_SUPABASE_PUBLISHABLE_KEY=${JSON.stringify(supabasePublishableKey)}`,
-    );
-    expect(environmentExample).not.toContain(supabaseUrl);
-    expect(environmentExample).not.toContain(supabasePublishableKey);
-    expect(gitignore.split(/\r?\n/)).toContain(".env.local");
-    expect(readme).not.toContain(supabaseUrl);
-    expect(readme).not.toContain(supabasePublishableKey);
-    expect(setupSql).toMatch(
-      /alter table public\.tinygres_posts replica identity full/i,
-    );
-    expect(setupSql).toContain(
-      "public.tinygres_posts already exists and is not owned by create-tinygres",
-    );
-    expect(setupSql).toContain(
-      "create-tinygres:v1 disposable public demo table",
-    );
-    expect(setupSql).toMatch(
-      /alter publication supabase_realtime add table public\.tinygres_posts/i,
-    );
-    expect(setupSql).toMatch(/using \(true\)/i);
+    expect(source).not.toContain("createClient");
+    expect(source).not.toContain("replaceTable");
+    expect(source).not.toContain("applyBatch");
+    expect(source).not.toMatch(/supabase/i);
 
-    await installBuildAndCheck(generatedSupabaseClient);
-    await installBuildAndCheck(resolve(output, "supabase-memory-app/client"));
-  }, 180_000);
+    const memorySource = await readFile(
+      resolve(generatedMemoryClient, "src/main.ts"),
+      "utf8",
+    );
+    expect(memorySource).not.toMatch(/storage:\s*\{\s*kind:\s*['"]opfs['"]/);
+    expect(memorySource).toContain("database.transaction(");
+    expect(memorySource).toContain("JOIN task_tags");
+    expect(memorySource).toContain("JOIN tags");
+    expect(memorySource).toContain("memory database starts fresh");
+
+    await installBuildAndCheck(generatedOpfsClient);
+    await installBuildAndCheck(generatedMemoryClient);
+  }, 240_000);
 });
 
-function generate(options: string[]): void {
+function generate(projectName: string, storage: "memory" | "opfs"): void {
   run(
-    npm,
+    process.execPath,
     [
-      "--prefix",
-      root,
-      "run",
-      "local",
-      "--",
+      resolve(root, "dist/cli.js"),
       "--non-interactive",
-      ...options,
+      "--projectName",
+      projectName,
+      "--storage",
+      storage,
       "--installAndRun",
       "false",
     ],
     output,
+    { CREATE_TINYGRES_DEPENDENCY: tinygresDependency },
   );
 }
 
@@ -149,7 +84,7 @@ async function installBuildAndCheck(client: string): Promise<void> {
   const manifest = JSON.parse(
     await readFile(resolve(client, "package.json"), "utf8"),
   );
-  expect(manifest.dependencies.tinygres).toBe("^0.0.3");
+  expect(manifest.dependencies.tinygres).toBe(tinygresDependency);
 
   run(npm, ["install", "--no-audit", "--no-fund"], client);
   expect(
@@ -161,13 +96,49 @@ async function installBuildAndCheck(client: string): Promise<void> {
       "utf8",
     ),
   );
-  expect(installedManifest.name).toBe("tinygres");
-  expect(installedManifest.version).toBe("0.0.3");
+  expect(installedManifest).toMatchObject({
+    name: "tinygres",
+    version: "0.0.4",
+  });
 
   run(npm, ["run", "build"], client);
 
   const assets = await readdir(resolve(client, "dist/assets"));
   expect(assets.some((file) => file.endsWith(".wasm"))).toBe(true);
+}
+
+async function packSiblingTinygres(): Promise<string> {
+  if (!existsSync(resolve(tinygresRoot, "package.json"))) {
+    throw new Error(
+      "Set CREATE_TINYGRES_DEPENDENCY to a packed TinyGres 0.0.4 package, or check out TinyGres beside create-tinygres.",
+    );
+  }
+
+  run(npm, ["run", "build"], tinygresRoot);
+  const packages = resolve(output, "packages");
+  await mkdir(packages, { recursive: true });
+  const packed = JSON.parse(
+    run(
+      npm,
+      [
+        "pack",
+        "./dist",
+        "--ignore-scripts",
+        "--json",
+        "--pack-destination",
+        packages,
+      ],
+      tinygresRoot,
+    ),
+  ) as Array<{ filename?: unknown; version?: unknown }>;
+  const packageResult = packed[0];
+  if (
+    packageResult?.version !== "0.0.4" ||
+    typeof packageResult.filename !== "string"
+  ) {
+    throw new Error("Sibling TinyGres must pack as version 0.0.4");
+  }
+  return pathToFileURL(resolve(packages, packageResult.filename)).href;
 }
 
 function run(

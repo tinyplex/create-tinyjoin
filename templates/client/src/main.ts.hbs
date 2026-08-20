@@ -1,140 +1,78 @@
 import './style.css';
 
-import {
-  createClient,
-  type ChangeBatch,
-  type TableSchema,
-} from 'tinygres';
+import {create} from 'tinygres';
 
-type Post = {
-  id: number;
+type TaskRow = {
+  task_id: number;
   title: string;
-  author: string;
-  published: boolean;
+  done: boolean;
+  tag_name: string | null;
 };
 
-const postsSchema = {
-  name: 'posts',
-  primaryKey: ['id'],
-} satisfies TableSchema;
+type TaskSummaryRow = {
+  done: boolean;
+  task_count: number;
+};
 
-const initialPosts: Post[] = [
-  {
-    id: 1,
-    title: 'The worker owns the database',
-    author: 'Ada',
-    published: true,
-  },
-  {
-    id: 2,
-    title: 'Queries stay off the main thread',
-    author: 'Linus',
-    published: true,
-  },
-  {
-    id: 3,
-    title: 'Drafts remain filtered locally',
-    author: 'Grace',
-    published: false,
-  },
-];
+type TagRow = {
+  id: number;
+  name: string;
+};
+
+type MaximumIdRow = {
+  max_id: number | null;
+};
+
+type TaskView = {
+  id: number;
+  title: string;
+  done: boolean;
+  tags: string[];
+};
+
+const TASK_QUERY = `SELECT task.id AS task_id, task.title AS title,
+       task.done AS done, tag.name AS tag_name
+FROM tasks AS task
+LEFT JOIN task_tags AS task_tag ON task.id = task_tag.task_id
+LEFT JOIN tags AS tag ON task_tag.tag_id = tag.id
+WHERE task.id >= $1
+ORDER BY task.id, tag.name`;
 
 const stateElement = element<HTMLElement>('[data-testid="state"]');
 const revisionElement = element<HTMLElement>('[data-testid="revision"]');
-const postsElement = element<HTMLUListElement>('[data-testid="posts"]');
-const latencyElement = element<HTMLElement>('[data-testid="latency"]');
 const invalidationsElement = element<HTMLElement>(
   '[data-testid="invalidations"]',
 );
+const totalCountElement = element<HTMLElement>(
+  '[data-testid="total-count"]',
+);
+const openCountElement = element<HTMLElement>('[data-testid="open-count"]');
+const doneCountElement = element<HTMLElement>('[data-testid="done-count"]');
+const tasksElement = element<HTMLUListElement>('[data-testid="tasks"]');
+const latencyElement = element<HTMLElement>(
+  '[data-testid="query-latency"]',
+);
 const statusElement = element<HTMLElement>('[data-testid="status"]');
 const errorElement = element<HTMLElement>('[data-testid="error"]');
-const applyButton = element<HTMLButtonElement>(
-  '[data-testid="apply-change"]',
-);
+const taskForm = element<HTMLFormElement>('[data-testid="task-form"]');
+const titleInput = element<HTMLInputElement>('[data-testid="task-title"]');
+const tagSelect = element<HTMLSelectElement>('[data-testid="task-tag"]');
+const addButton = element<HTMLButtonElement>('[data-testid="add-task"]');
+const reloadButton = element<HTMLButtonElement>('[data-testid="reload"]');
 
 let invalidations = 0;
-let simulatedChanges = 0;
+let renderTail = Promise.resolve();
 
 async function boot(): Promise<void> {
-  const database = createClient({
-    schemas: [postsSchema],
+  setState('Opening…', 'loading');
+  const database = create({
     {{#if usesOpfs}}
     storage: {kind: 'opfs', name: '{{storageName}}'},
+    {{else}}
+    storage: {kind: 'memory'},
     {{/if}}
   });
-  await database.ready();
-
-  // A new database starts at revision zero. Leave a restored OPFS snapshot
-  // alone so reloading the starter never replaces already-persisted data.
-  const restored = await database.query<Post>(
-    'SELECT id, title, author FROM posts WHERE published = $1',
-    [true],
-  );
-  if (restored.revision === 0) {
-    await database.replaceTable(postsSchema, initialPosts);
-  }
-  await renderQuery(database);
-
-  const unsubscribe = database.subscribe({tables: ['posts']}, (event) => {
-    invalidations += 1;
-    invalidationsElement.textContent = String(invalidations);
-    statusElement.textContent = `Revision ${event.revision} invalidated ${event.tables.join(', ')}; re-querying…`;
-    void renderQuery(database).then(() => {
-      statusElement.textContent = `Re-queried after invalidation at revision ${event.revision}.`;
-    }, showError);
-  });
-
-  applyButton.addEventListener('click', async () => {
-    applyButton.disabled = true;
-    simulatedChanges += 1;
-    statusElement.textContent = 'Applying a normalized fake server batch…';
-    const batch = {
-      sourceId: 'create-tinygres-demo',
-      transactionId: `fake-server-change-${simulatedChanges}`,
-      committedAt: new Date().toISOString(),
-      changes: [
-        {
-          type: 'upsert',
-          table: 'posts',
-          row: {
-            id: 2,
-            title: `Worker invalidation #${simulatedChanges}`,
-            author: 'Linus',
-            published: true,
-          },
-        },
-      ],
-    } satisfies ChangeBatch;
-
-    try {
-      await database.applyBatch(batch);
-    } catch (error) {
-      showError(error);
-    } finally {
-      applyButton.disabled = false;
-    }
-  });
-
-  window.__tinygresDemo = {
-    async benchmark(iterations) {
-      if (!Number.isSafeInteger(iterations) || iterations < 1) {
-        throw new TypeError('Benchmark iterations must be a positive integer');
-      }
-      const samples: number[] = [];
-      for (let iteration = 0; iteration < iterations; iteration += 1) {
-        const startedAt = performance.now();
-        const result = await database.query<Post>(
-          'SELECT id, title FROM posts WHERE published = $1',
-          [true],
-        );
-        samples.push(performance.now() - startedAt);
-        if (result.rows.length !== 2) {
-          throw new Error('Benchmark query returned an unexpected row count');
-        }
-      }
-      return samples;
-    },
-  };
+  let unsubscribe = (): void => undefined;
 
   window.addEventListener(
     'pagehide',
@@ -146,53 +84,368 @@ async function boot(): Promise<void> {
     {once: true},
   );
 
-  stateElement.textContent = 'Ready';
-  stateElement.dataset.ready = 'true';
+  await database.ready();
+  statusElement.textContent = 'Creating the local relational schema…';
+  await initializeDatabase(database);
+  let observedRevision = database.getRevision();
+
+  unsubscribe = database.subscribe(
+    {tables: ['tasks', 'task_tags', 'tags']},
+    (event) => {
+      // The Worker can deliver the coalesced bootstrap invalidation after the
+      // final schema/seed RPC has resolved. It is already represented by the
+      // initial render, so count only revisions produced by later UI actions.
+      if (event.revision <= observedRevision) {
+        return;
+      }
+      observedRevision = event.revision;
+      invalidations += 1;
+      invalidationsElement.textContent = String(invalidations);
+      void queueRender(
+        database,
+        `Revision ${event.revision} changed ${event.tables.join(', ')}. The join and aggregate were re-run locally.`,
+      );
+    },
+  );
+
+  taskForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    void addTask(database);
+  });
+  tasksElement.addEventListener('click', (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) {
+      return;
+    }
+    const button = target.closest<HTMLButtonElement>(
+      'button[data-testid="toggle-task"]',
+    );
+    if (button) {
+      void toggleTask(database, button);
+    }
+  });
+  reloadButton.addEventListener('click', () => window.location.reload());
+
+  await renderDashboard(database);
+  setState('Ready', 'ready');
+  setControlsEnabled(true);
   statusElement.textContent =
     {{#if usesOpfs}}
-    'Ready. The persisted snapshot is queryable locally.';
+    'Ready. Change the data, then reload—the OPFS database keeps it.';
     {{else}}
-    'Ready. The initial snapshot is queryable locally.';
+    'Ready. This memory database starts fresh on every reload.';
     {{/if}}
-  applyButton.disabled = false;
+
+  window.__tinygresDemo = {
+    async benchmark(iterations) {
+      if (!Number.isSafeInteger(iterations) || iterations < 1) {
+        throw new TypeError('Benchmark iterations must be a positive integer');
+      }
+      const samples: number[] = [];
+      for (let iteration = 0; iteration < iterations; iteration += 1) {
+        const startedAt = performance.now();
+        const result = await database.query<TaskRow>(TASK_QUERY, [1]);
+        samples.push(performance.now() - startedAt);
+        if (result.rows.length < 3) {
+          throw new Error('Benchmark join returned an unexpected row count');
+        }
+      }
+      return samples;
+    },
+  };
 }
 
-async function renderQuery(
-  database: ReturnType<typeof createClient>,
+async function initializeDatabase(
+  database: ReturnType<typeof create>,
 ): Promise<void> {
-  const startedAt = performance.now();
-  const result = await database.query<Post>(
-    'SELECT id, title, author FROM posts WHERE published = $1',
-    [true],
+  const schemaStatements = [
+    `CREATE TABLE IF NOT EXISTS tasks (
+      id INTEGER PRIMARY KEY,
+      title TEXT NOT NULL,
+      done BOOLEAN NOT NULL DEFAULT false
+    )`,
+    `CREATE TABLE IF NOT EXISTS tags (
+      id INTEGER PRIMARY KEY,
+      name TEXT NOT NULL
+    )`,
+    `CREATE TABLE IF NOT EXISTS task_tags (
+      task_id INTEGER NOT NULL,
+      tag_id INTEGER NOT NULL,
+      PRIMARY KEY (task_id, tag_id)
+    )`,
+    'CREATE INDEX IF NOT EXISTS tasks_done ON tasks (done)',
+    'CREATE UNIQUE INDEX IF NOT EXISTS tags_name ON tags (name)',
+    'CREATE INDEX IF NOT EXISTS task_tags_tag_id ON task_tags (tag_id)',
+  ];
+
+  for (const statement of schemaStatements) {
+    await database.exec(statement);
+  }
+
+  const taskCount = await database.query<{task_count: number}>(
+    'SELECT COUNT(*) AS task_count FROM tasks',
   );
+  if (taskCount.rows[0]?.task_count !== 0) {
+    return;
+  }
+
+  await database.transaction(async (transaction) => {
+    await transaction.exec(
+      `INSERT INTO tasks (id, title, done) VALUES
+       (1, $1, true), (2, $2, false), (3, $3, false)`,
+      [
+        'Read the SQL compatibility matrix',
+        'Build the standalone database demo',
+        'Reload to prove local persistence',
+      ],
+    );
+    await transaction.exec(
+      "INSERT INTO tags (id, name) VALUES (1, 'docs'), (2, 'demo'), (3, 'storage')",
+    );
+    await transaction.exec(
+      `INSERT INTO task_tags (task_id, tag_id) VALUES
+       (1, 1), (2, 2), (2, 3), (3, 3)`,
+    );
+  });
+}
+
+async function renderDashboard(
+  database: ReturnType<typeof create>,
+  message?: string,
+): Promise<void> {
+  tasksElement.setAttribute('aria-busy', 'true');
+  const startedAt = performance.now();
+  const [taskResult, summaryResult, tagResult] = await Promise.all([
+    database.query<TaskRow>(TASK_QUERY, [1]),
+    database.query<TaskSummaryRow>(
+      `SELECT done, COUNT(*) AS task_count
+       FROM tasks
+       GROUP BY done
+       ORDER BY done`,
+    ),
+    database.query<TagRow>('SELECT id, name FROM tags ORDER BY name'),
+  ]);
   const elapsed = performance.now() - startedAt;
 
-  revisionElement.textContent = String(result.revision);
-  latencyElement.textContent = `${result.rows.length} rows returned in ${elapsed.toFixed(2)} ms round-trip`;
-  postsElement.replaceChildren(
-    ...result.rows.map((post) => {
+  const tasks = groupTasks(taskResult.rows);
+  const openCount = countFor(summaryResult.rows, false);
+  const doneCount = countFor(summaryResult.rows, true);
+
+  revisionElement.textContent = String(taskResult.revision);
+  totalCountElement.textContent = String(openCount + doneCount);
+  openCountElement.textContent = String(openCount);
+  doneCountElement.textContent = String(doneCount);
+  latencyElement.textContent = `${taskResult.rows.length} joined rows grouped into ${tasks.length} tasks · join + aggregate + tags in ${elapsed.toFixed(2)} ms`;
+  renderTasks(tasks);
+  renderTags(tagResult.rows);
+  tasksElement.setAttribute('aria-busy', 'false');
+
+  if (message) {
+    statusElement.textContent = message;
+  }
+}
+
+function queueRender(
+  database: ReturnType<typeof create>,
+  message: string,
+): Promise<void> {
+  const nextRender = renderTail.then(() => renderDashboard(database, message));
+  renderTail = nextRender.catch(showActionError);
+  return nextRender;
+}
+
+async function addTask(database: ReturnType<typeof create>): Promise<void> {
+  const title = titleInput.value.trim();
+  const tagId = Number(tagSelect.value);
+  if (!title || !Number.isSafeInteger(tagId)) {
+    showActionError(new Error('Enter a task and choose a tag.'));
+    return;
+  }
+
+  clearError();
+  addButton.disabled = true;
+  titleInput.disabled = true;
+  tagSelect.disabled = true;
+  statusElement.textContent =
+    'Staging the task and its tag link in one transaction…';
+
+  try {
+    await database.transaction(async (transaction) => {
+      const maximum = await transaction.query<MaximumIdRow>(
+        'SELECT MAX(id) AS max_id FROM tasks',
+      );
+      const nextId = (maximum.rows[0]?.max_id ?? 0) + 1;
+      if (!Number.isSafeInteger(nextId)) {
+        throw new Error('The demo task identifier range is exhausted.');
+      }
+      await transaction.exec(
+        'INSERT INTO tasks (id, title) VALUES ($1, $2)',
+        [nextId, title],
+      );
+      await transaction.exec(
+        'INSERT INTO task_tags (task_id, tag_id) VALUES ($1, $2)',
+        [nextId, tagId],
+      );
+    });
+    taskForm.reset();
+    titleInput.focus();
+  } catch (error) {
+    showActionError(error);
+  } finally {
+    addButton.disabled = false;
+    titleInput.disabled = false;
+    tagSelect.disabled = false;
+  }
+}
+
+async function toggleTask(
+  database: ReturnType<typeof create>,
+  button: HTMLButtonElement,
+): Promise<void> {
+  const id = Number(button.dataset.taskId);
+  const done = button.dataset.done !== 'true';
+  if (!Number.isSafeInteger(id)) {
+    showActionError(new Error('The selected task has an invalid identifier.'));
+    return;
+  }
+
+  clearError();
+  button.disabled = true;
+  statusElement.textContent = `Updating task ${id} with parameterized SQL…`;
+  try {
+    await database.exec('UPDATE tasks SET done = $1 WHERE id = $2', [done, id]);
+  } catch (error) {
+    button.disabled = false;
+    showActionError(error);
+  }
+}
+
+function groupTasks(rows: TaskRow[]): TaskView[] {
+  const tasks = new Map<number, TaskView>();
+  for (const row of rows) {
+    const task = tasks.get(row.task_id) ?? {
+      id: row.task_id,
+      title: row.title,
+      done: row.done,
+      tags: [],
+    };
+    if (row.tag_name !== null) {
+      task.tags.push(row.tag_name);
+    }
+    tasks.set(row.task_id, task);
+  }
+  return [...tasks.values()];
+}
+
+function renderTasks(tasks: TaskView[]): void {
+  if (tasks.length === 0) {
+    const empty = document.createElement('li');
+    empty.className = 'empty';
+    empty.textContent = 'No tasks yet. Add the first one above.';
+    tasksElement.replaceChildren(empty);
+    return;
+  }
+
+  tasksElement.replaceChildren(
+    ...tasks.map((task) => {
       const item = document.createElement('li');
-      item.dataset.postId = String(post.id);
+      item.className = `task${task.done ? ' is-done' : ''}`;
+      item.dataset.taskId = String(task.id);
 
+      const toggle = document.createElement('button');
+      toggle.className = 'task-toggle';
+      toggle.type = 'button';
+      toggle.dataset.testid = 'toggle-task';
+      toggle.dataset.taskId = String(task.id);
+      toggle.dataset.done = String(task.done);
+      toggle.setAttribute(
+        'aria-label',
+        `${task.done ? 'Reopen' : 'Complete'} ${task.title}`,
+      );
+      toggle.textContent = task.done ? '✓' : '';
+
+      const content = document.createElement('div');
+      content.className = 'task-content';
       const title = document.createElement('strong');
-      title.textContent = post.title;
-      const author = document.createElement('span');
-      author.textContent = post.author;
-
-      item.append(title, author);
+      title.textContent = task.title;
+      const metadata = document.createElement('div');
+      metadata.className = 'task-metadata';
+      const id = document.createElement('span');
+      id.className = 'task-id';
+      id.textContent = `#${task.id}`;
+      metadata.append(
+        id,
+        ...task.tags.map((tag) => {
+          const chip = document.createElement('span');
+          chip.className = 'tag';
+          chip.dataset.tag = tag;
+          chip.textContent = tag;
+          return chip;
+        }),
+      );
+      content.append(title, metadata);
+      item.append(toggle, content);
       return item;
     }),
   );
 }
 
-function showError(error: unknown): void {
+function renderTags(tags: TagRow[]): void {
+  const selected = tagSelect.value;
+  tagSelect.replaceChildren(
+    ...tags.map((tag) => {
+      const option = document.createElement('option');
+      option.value = String(tag.id);
+      option.textContent = tag.name;
+      return option;
+    }),
+  );
+  if (tags.some((tag) => String(tag.id) === selected)) {
+    tagSelect.value = selected;
+  }
+}
+
+function countFor(rows: TaskSummaryRow[], done: boolean): number {
+  return rows.find((row) => row.done === done)?.task_count ?? 0;
+}
+
+function setControlsEnabled(enabled: boolean): void {
+  addButton.disabled = !enabled;
+  titleInput.disabled = !enabled;
+  tagSelect.disabled = !enabled;
+  reloadButton.disabled = !enabled;
+}
+
+function setState(label: string, state: 'loading' | 'ready' | 'error'): void {
+  stateElement.textContent = label;
+  stateElement.dataset.state = state;
+  stateElement.dataset.ready = String(state === 'ready');
+}
+
+function clearError(): void {
+  errorElement.hidden = true;
+  errorElement.textContent = '';
+}
+
+function showActionError(error: unknown): void {
   const message = error instanceof Error ? error.message : String(error);
-  stateElement.textContent = 'Failed';
-  stateElement.dataset.ready = 'false';
-  statusElement.textContent = 'The TinyGres starter flow failed.';
+  statusElement.textContent = 'The last local SQL operation failed.';
   errorElement.hidden = false;
   errorElement.textContent = message;
-  applyButton.disabled = true;
+}
+
+function showFatalError(error: unknown): void {
+  setState('Failed', 'error');
+  setControlsEnabled(false);
+  statusElement.textContent = 'TinyGres could not open this local database.';
+  const message = error instanceof Error ? error.message : String(error);
+  errorElement.hidden = false;
+  errorElement.textContent =
+    {{#if usesOpfs}}
+    `${message}\n\nOPFS requires a secure context, browser support, and an exclusive lock for this database name.`;
+    {{else}}
+    message;
+    {{/if}}
 }
 
 function element<ElementType extends Element>(selector: string): ElementType {
@@ -203,4 +456,4 @@ function element<ElementType extends Element>(selector: string): ElementType {
   return match;
 }
 
-void boot().catch(showError);
+void boot().catch(showFatalError);

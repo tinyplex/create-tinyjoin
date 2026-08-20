@@ -3,25 +3,21 @@
 This is a generated TinyGres TypeScript/Vite starter.
 
 - Work in `client/` and run `npm run dev` there.
-- TinyGres owns its {{#if usesOpfs}}OPFS-backed{{else}}in-memory{{/if}} data and
-  query engine inside a dedicated Worker.
-{{#if isSupabase}}
-- The built-in read-only Supabase source owns snapshots and incoming changes for
-  `public.tinygres_posts`; do not call `replaceTable` or `applyBatch` from UI
-  code and do not invent an upstream-write path.
-- Keep the table mapping, `supabase.sql`, rendered query, RLS policy, replica
-  identity, and Realtime publication configuration aligned.
-- Browser configuration belongs in ignored `client/.env.local`. Keep only
-  placeholders in `.env.example`, and never expose a secret or service-role key.
-- Preserve immediate cached rendering after `ready()`, invalidation-driven
-  re-querying, explicit sync state, `whenSynced()`, and client cleanup.
-{{else}}
-- Treat `replaceTable` and `applyBatch` as read-only source integration seams,
-  not as local application mutation APIs.
+- TinyGres owns its {{#if usesOpfs}}OPFS-backed{{else}}in-memory{{/if}}
+  page-native database and Rust/WASM engine inside a dedicated Worker.
+- Keep the database standalone and local. External services belong in separate
+  application code.
+- Use `create()`, parameterized `exec()`/`query()` calls, and `close()` as the
+  primary lifecycle.
+- Run schema DDL as standalone statements. Use `transaction(callback)` only for
+  related `INSERT`, `UPDATE`, and `DELETE` work, and keep the transaction object
+  inside its callback.
+- Preserve the three-table many-to-many query, aggregate summary,
+  subscription-driven re-query, and visible revision/error state when changing
+  the demo.
 {{#if usesOpfs}}
-- Preserve the stable `{{storageName}}` OPFS name and do not replace restored
-  rows with the demo seed on reload.
+- Preserve the stable `{{storageName}}` OPFS name and idempotent schema/seed
+  setup so reloads do not replace existing data.
 {{/if}}
-{{/if}}
-- Preserve parameterized SQL and the explicit table schema.
-- Validate changes with `npm run build`.
+- Keep SQL within TinyGres's documented compatibility contract and validate
+  changes with `npm run build`.

@@ -1,13 +1,13 @@
 {
   "name": "create-tinygres",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "author": "jamesgpearce",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/tinyplex/create-tinygres.git"
   },
   "license": "MIT",
-  "description": "Scaffold a TinyGres worker and WebAssembly demo application.",
+  "description": "Scaffold a standalone TinyGres browser database application.",
   "keywords": [
     "postgresql",
     "local-first",
@@ -41,10 +41,8 @@
   "devDependencies": {
     "@playwright/test": "^1.62.1",
     "@types/node": "^26.2.0",
-    "@types/ws": "^8.18.1",
     "esbuild": "^0.28.1",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.10",
-    "ws": "^8.21.3"
+    "vitest": "^4.1.10"
   }
 }

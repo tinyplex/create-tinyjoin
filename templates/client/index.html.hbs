@@ -5,95 +5,174 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="{{#if isSupabase}}A local TinyGres replica synchronized from Supabase{{else}}A TinyGres Worker and WebAssembly starter application{{/if}}"
+      content="A standalone TinyGres relational database running in a browser Worker"
     />
     <title>{{projectName}} · TinyGres</title>
   </head>
   <body>
     <main>
       <header class="hero">
-        <p class="eyebrow">{{#if isSupabase}}Supabase replica{{else}}Read-only prototype{{/if}}</p>
+        <p class="eyebrow">Standalone browser database</p>
         <h1>TinyGres</h1>
         <p class="lede">
-          {{#if isSupabase}}
-          Query a read-only Supabase replica locally in a dedicated Worker and
-          Rust/WASM.
-          {{else}}
-          A tiny PostgreSQL-shaped query cache running entirely in a dedicated
-          Worker and Rust/WASM.
-          {{/if}}
+          A writable, SQL-first relational app running entirely in a dedicated
+          Worker and Rust/WASM—with no server round trip.
         </p>
+        <div class="hero-notes" aria-label="Demo highlights">
+          <span>SQL DDL + DML</span>
+          <span>Atomic transactions</span>
+          <span>Three-table joins</span>
+        </div>
       </header>
 
       <section class="card runtime" aria-labelledby="runtime-title">
         <div>
-          <p class="label" id="runtime-title">Runtime</p>
-          <p class="runtime-value">Dedicated Worker + Rust/WASM · {{#if usesOpfs}}OPFS{{else}}memory{{/if}}</p>
+          <p class="label" id="runtime-title">Local engine</p>
+          <p class="runtime-value">Dedicated Worker · Rust/WASM</p>
         </div>
-        <span class="state" data-testid="state">Starting…</span>
+        <div class="runtime-badges">
+          <span class="storage" data-testid="storage">
+            {{#if usesOpfs}}OPFS · survives reloads{{else}}Memory · resets on reload{{/if}}
+          </span>
+          <span
+            class="state"
+            data-testid="state"
+            data-state="loading"
+            data-ready="false"
+            aria-live="polite"
+          >Opening…</span>
+        </div>
       </section>
 
-      {{#if isSupabase}}
-      <section class="card runtime" aria-labelledby="sync-title">
-        <div>
-          <p class="label" id="sync-title">Supabase synchronization</p>
-          <p class="runtime-value">public.tinygres_posts</p>
-        </div>
-        <span class="state sync-phase" data-testid="sync-phase">idle</span>
-      </section>
-      {{/if}}
-
-      <section class="card" aria-labelledby="query-title">
-        <div class="section-heading">
-          <div>
-            <p class="label">Local query</p>
-            <h2 id="query-title">Published posts</h2>
+      <div class="workspace">
+        <section class="card app-card" aria-labelledby="tasks-title">
+          <div class="section-heading">
+            <div>
+              <p class="label">Relational task list</p>
+              <h2 id="tasks-title">What should we ship?</h2>
+            </div>
+            <div class="metrics" aria-label="Task totals">
+              <div>
+                <strong data-testid="total-count">–</strong>
+                <span>total</span>
+              </div>
+              <div>
+                <strong data-testid="open-count">–</strong>
+                <span>open</span>
+              </div>
+              <div>
+                <strong data-testid="done-count">–</strong>
+                <span>done</span>
+              </div>
+            </div>
           </div>
-          <p class="revision">
-            Revision <strong data-testid="revision">–</strong>
+
+          <form class="composer" data-testid="task-form">
+            <div class="composer-copy">
+              <label for="task-title">Add a local task</label>
+              <span>Two inserts, one atomic callback transaction.</span>
+            </div>
+            <div class="composer-fields">
+              <input
+                id="task-title"
+                data-testid="task-title"
+                name="title"
+                type="text"
+                maxlength="120"
+                placeholder="Try: Inspect the generated app"
+                autocomplete="off"
+                required
+                disabled
+              />
+              <label class="sr-only" for="task-tag">Tag</label>
+              <select
+                id="task-tag"
+                data-testid="task-tag"
+                name="tag"
+                disabled
+              >
+                <option>Loading tags…</option>
+              </select>
+              <button type="submit" data-testid="add-task" disabled>
+                Add task
+              </button>
+            </div>
+          </form>
+
+          <ul
+            class="tasks"
+            data-testid="tasks"
+            aria-live="polite"
+            aria-busy="true"
+          >
+            <li class="empty">Opening the local database…</li>
+          </ul>
+        </section>
+
+        <aside class="card activity-card" aria-labelledby="activity-title">
+          <p class="label">Observable local state</p>
+          <h2 id="activity-title">Database activity</h2>
+          <dl class="activity-metrics">
+            <div>
+              <dt>Revision</dt>
+              <dd data-testid="revision">–</dd>
+            </div>
+            <div>
+              <dt>Invalidations</dt>
+              <dd data-testid="invalidations">0</dd>
+            </div>
+          </dl>
+          <p class="storage-proof">
+            {{#if usesOpfs}}
+            Add or complete a task, then reload. The same revision and rows come
+            back from the page-native OPFS database.
+            {{else}}
+            This run is intentionally ephemeral. Choose OPFS in the generator
+            to make the same database survive reloads.
+            {{/if}}
           </p>
-        </div>
-
-        <code>SELECT id, title{{#unless isSupabase}}, author{{/unless}} FROM {{#if isSupabase}}tinygres_posts{{else}}posts{{/if}} WHERE published = $1</code>
-        <ul class="posts" data-testid="posts" aria-live="polite"></ul>
-        <p class="latency" data-testid="latency">Waiting for the worker…</p>
-      </section>
-
-      {{#unless isSupabase}}
-      <section class="card change" aria-labelledby="change-title">
-        <div>
-          <p class="label">Replication seam</p>
-          <h2 id="change-title">Fake an incoming server change</h2>
-          <p>
-            This calls the source-integration API, not a local application write.
-            The worker applies the batch, emits an invalidation, and the page
-            re-runs its SQL query.
+          <button
+            class="secondary-button"
+            type="button"
+            data-testid="reload"
+            disabled
+          >
+            Reload to verify
+          </button>
+          <p class="status" data-testid="status" role="status">
+            Loading the WebAssembly engine…
           </p>
-        </div>
-        <button type="button" data-testid="apply-change" disabled>
-          Simulate server change
-        </button>
-      </section>
-      {{/unless}}
+          <p class="error" data-testid="error" role="alert" hidden></p>
+        </aside>
+      </div>
 
-      <section class="card activity" aria-labelledby="activity-title">
-        <div class="section-heading">
-          <h2 id="activity-title">Activity</h2>
-          <p><strong data-testid="invalidations">0</strong> invalidations</p>
+      <section class="card sql-card" aria-labelledby="query-title">
+        <div class="section-heading sql-heading">
+          <div>
+            <p class="label">The query behind the list</p>
+            <h2 id="query-title">A real many-to-many join</h2>
+          </div>
+          <span class="bounded">Bounded PostgreSQL-shaped SQL</span>
         </div>
-        <p class="status" data-testid="status" aria-live="polite">
-          {{#if isSupabase}}Restoring the local cache…{{else}}Loading the WebAssembly engine…{{/if}}
-        </p>
-        <p class="error" data-testid="error" hidden></p>
+        <pre><code>SELECT task.id, task.title, task.done, tag.name
+FROM tasks AS task
+LEFT JOIN task_tags AS task_tag ON task.id = task_tag.task_id
+LEFT JOIN tags AS tag ON task_tag.tag_id = tag.id
+WHERE task.id >= $1
+ORDER BY task.id, tag.name</code></pre>
+        <div class="query-meta">
+          <p class="latency" data-testid="query-latency">
+            Waiting for the worker…
+          </p>
+          <p>`COUNT(*) GROUP BY done` supplies the live totals above.</p>
+        </div>
       </section>
 
       <footer>
-        {{#if isSupabase}}
-        Read-only Supabase synchronization with {{#if usesOpfs}}persistent OPFS cache{{else}}an in-memory cache{{/if}}. No upstream writes.
-        {{else}}
-        {{#if usesOpfs}}Persistent OPFS cache{{else}}In-memory only{{/if}}. No
-        Supabase connection or upstream writes.
-        {{/if}}
+        TinyGres is experimental and deliberately smaller than PostgreSQL. This
+        demo uses its documented SQL subset, browser Worker API, and local
+        storage only—there is no PostgreSQL server, wire protocol, or hosted
+        integration hiding behind it.
       </footer>
     </main>
     <script type="module" src="/src/main.ts"></script>

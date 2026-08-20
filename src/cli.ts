@@ -11,13 +11,9 @@ import {
 const templateRoot = join(dirname(fileURLToPath(import.meta.url)), "templates");
 const args = process.argv.slice(2);
 
-const ADAPTERS = [
-  { title: "Sample data", value: "sample" },
-  { title: "Supabase", value: "supabase" },
-] as const;
 const STORAGE_OPTIONS = [
+  { title: "OPFS (recommended)", value: "opfs" },
   { title: "Memory", value: "memory" },
-  { title: "OPFS", value: "opfs" },
 ] as const;
 
 const optionCatalog = {
@@ -25,24 +21,10 @@ const optionCatalog = {
   nonInteractiveFlag: "--non-interactive",
   options: {
     projectName: { type: "string", required: true },
-    adapter: {
-      values: ADAPTERS.map(({ value }) => value),
-      required: true,
-      default: "sample",
-    },
     storage: {
       values: STORAGE_OPTIONS.map(({ value }) => value),
       required: true,
-      default: "memory",
-    },
-    supabaseUrl: {
-      type: "string",
-      requiredWhen: { adapter: "supabase" },
-    },
-    supabasePublishableKey: {
-      type: "string",
-      requiredWhen: { adapter: "supabase" },
-      sensitive: true,
+      default: "opfs",
     },
     installAndRun: {
       values: [true, false],
@@ -60,14 +42,8 @@ Interactively scaffold a TinyGres application:
 
 Run non-interactively:
   npm create tinygres@latest -- --non-interactive \\
-    --projectName my-tinygres-app --adapter sample --storage memory \\
+    --projectName my-tinygres-app --storage opfs \\
     --installAndRun false
-
-Generate a Supabase-backed app (URL and publishable key are required):
-  npm create tinygres@latest -- --non-interactive \\
-    --projectName my-tinygres-app --adapter supabase --storage opfs \\
-    --supabaseUrl https://example.supabase.co \\
-    --supabasePublishableKey sb_publishable_example --installAndRun false
 
 Agent and automation commands:
   --list-options  Print the current option catalog as JSON
@@ -92,31 +68,10 @@ const config = {
     },
     {
       type: "select" as const,
-      name: "adapter",
-      message: "Data adapter:",
-      choices: [...ADAPTERS],
-      initial: 0,
-    },
-    {
-      type: "select" as const,
       name: "storage",
-      message: "Storage:",
+      message: "Database storage:",
       choices: [...STORAGE_OPTIONS],
       initial: 0,
-    },
-    {
-      type: (_previous: unknown, answers: Record<string, unknown>) =>
-        answers.adapter === "supabase" ? ("text" as const) : null,
-      name: "supabaseUrl",
-      message: "Supabase project URL:",
-      validate: validateSupabaseUrl,
-    },
-    {
-      type: (_previous: unknown, answers: Record<string, unknown>) =>
-        answers.adapter === "supabase" ? ("text" as const) : null,
-      name: "supabasePublishableKey",
-      message: "Supabase publishable key (or legacy anon key):",
-      validate: validateSupabasePublishableKey,
     },
     {
       type: "confirm" as const,
@@ -131,42 +86,23 @@ const config = {
     if (validation !== true) {
       throw new TypeError(validation);
     }
-    const adapter = normalizeChoice(
-      answers.adapter === 0 ? "sample" : (answers.adapter ?? "sample"),
-      "adapter",
-      ["sample", "supabase"],
-    );
     const storage = normalizeChoice(
-      answers.storage === 0 ? "memory" : (answers.storage ?? "memory"),
+      answers.storage === 0 ? "opfs" : (answers.storage ?? "opfs"),
       "storage",
-      ["memory", "opfs"],
+      ["opfs", "memory"],
     );
-    const isSupabase = adapter === "supabase";
-    const supabaseConfig = isSupabase
-      ? {
-          supabaseUrlEnv: JSON.stringify(
-            normalizeSupabaseUrl(answers.supabaseUrl),
-          ),
-          supabasePublishableKeyEnv: JSON.stringify(
-            normalizeSupabasePublishableKey(answers.supabasePublishableKey),
-          ),
-        }
-      : {};
 
     return {
       projectName,
       installAndRun:
         answers.installAndRun === true || answers.installAndRun === "true",
-      adapter,
       storage,
-      isSupabase,
       usesOpfs: storage === "opfs",
       storageName: createStorageName(projectName),
-      ...supabaseConfig,
-      tinygresDependency: process.env.CREATE_TINYGRES_DEPENDENCY ?? "^0.0.3",
+      tinygresDependency: process.env.CREATE_TINYGRES_DEPENDENCY ?? "^0.0.4",
     };
   },
-  getFiles: (context) => [
+  getFiles: () => [
     { template: "README.md.hbs", output: "README.md", prettier: true },
     { template: "AGENTS.md.hbs", output: "AGENTS.md", prettier: true },
     {
@@ -189,9 +125,7 @@ const config = {
       prettier: true,
     },
     {
-      template: context.isSupabase
-        ? "client/src/main.supabase.ts.hbs"
-        : "client/src/main.ts.hbs",
+      template: "client/src/main.ts.hbs",
       output: "client/src/main.ts",
       prettier: true,
     },
@@ -205,19 +139,6 @@ const config = {
       output: "client/src/vite-env.d.ts",
       prettier: true,
     },
-    ...(context.isSupabase
-      ? [
-          {
-            template: "client/.env.local.hbs",
-            output: "client/.env.local",
-          },
-          {
-            template: "client/.env.example.hbs",
-            output: "client/.env.example",
-          },
-          { template: "supabase.sql.hbs", output: "supabase.sql" },
-        ]
-      : []),
   ],
   templateRoot,
   installCommand: "{pm} install",
@@ -265,111 +186,6 @@ function normalizeChoice<const Value extends string>(
   return value as Value;
 }
 
-function validateSupabaseUrl(value: string): true | string {
-  try {
-    normalizeSupabaseUrl(value);
-    return true;
-  } catch (error) {
-    return error instanceof Error ? error.message : "Invalid Supabase URL.";
-  }
-}
-
-function normalizeSupabaseUrl(input: unknown): string {
-  const rawValue = typeof input === "string" ? input : "";
-  if (/\r|\n|%0d|%0a/i.test(rawValue)) {
-    throw new TypeError("Supabase URL must not contain CR or LF characters.");
-  }
-  const value = rawValue.trim();
-  if (!value) {
-    throw new TypeError(
-      "A Supabase URL is required when using the Supabase adapter.",
-    );
-  }
-
-  let url: URL;
-  try {
-    url = new URL(value);
-  } catch {
-    throw new TypeError("Supabase URL must be an absolute HTTPS URL.");
-  }
-
-  if (url.username || url.password) {
-    throw new TypeError("Supabase URL must not contain credentials.");
-  }
-  const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
-  const isLoopback =
-    hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
-  if (url.protocol !== "https:" && !(url.protocol === "http:" && isLoopback)) {
-    throw new TypeError(
-      "Supabase URL must use HTTPS (HTTP is allowed only for loopback hosts).",
-    );
-  }
-
-  url.hash = "";
-  url.search = "";
-  url.pathname = url.pathname.replace(/\/+$/, "");
-  return url.href;
-}
-
-function validateSupabasePublishableKey(value: string): true | string {
-  try {
-    normalizeSupabasePublishableKey(value);
-    return true;
-  } catch (error) {
-    return error instanceof Error
-      ? error.message
-      : "Invalid Supabase publishable key.";
-  }
-}
-
-function normalizeSupabasePublishableKey(input: unknown): string {
-  const value = typeof input === "string" ? input.trim() : "";
-  if (!value) {
-    throw new TypeError(
-      "A Supabase publishable key is required when using the Supabase adapter.",
-    );
-  }
-  if (value.startsWith("sb_secret_")) {
-    throw new TypeError(
-      "Supabase secret keys must never be used in a browser application.",
-    );
-  }
-  if (/^sb_publishable_[A-Za-z0-9_-]+$/.test(value)) {
-    return value;
-  }
-
-  const role = getLegacyJwtRole(value);
-  if (role === "service_role") {
-    throw new TypeError(
-      "Supabase service_role keys must never be used in a browser application.",
-    );
-  }
-  if (role !== "anon") {
-    throw new TypeError(
-      "Use a Supabase sb_publishable_ key or a legacy anon JWT.",
-    );
-  }
-  return value;
-}
-
-function getLegacyJwtRole(value: string): unknown {
-  if (!/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(value)) {
-    return undefined;
-  }
-  try {
-    const payload = JSON.parse(
-      Buffer.from(value.split(".")[1] ?? "", "base64url").toString("utf8"),
-    ) as unknown;
-    return isRecord(payload) ? payload.role : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function createStorageName(projectName: string): string {
   const slug =
     projectName
@@ -377,7 +193,7 @@ function createStorageName(projectName: string): string {
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "") || "app";
   const prefix = "tinygres-";
-  const suffix = "-posts-v1";
+  const suffix = "-db-v1";
   return `${prefix}${slug.slice(0, 64 - prefix.length - suffix.length)}${suffix}`;
 }
 

@@ -1,18 +1,7 @@
 /// <reference types="vite/client" />
 
-{{#if isSupabase}}
-interface ImportMetaEnv {
-  readonly VITE_SUPABASE_URL: string;
-  readonly VITE_SUPABASE_PUBLISHABLE_KEY: string;
-}
-
-interface ImportMeta {
-  readonly env: ImportMetaEnv;
-}
-{{else}}
 interface Window {
   __tinygresDemo?: {
     benchmark(iterations: number): Promise<number[]>;
   };
 }
-{{/if}}

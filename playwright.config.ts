@@ -1,13 +1,9 @@
 import { defineConfig, devices } from "@playwright/test";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-import {
-  generatedSampleClient,
-  generatedSupabaseClient,
-} from "./test/paths.js";
+import { generatedOpfsClient } from "./test/paths.js";
 
-const samplePort = 4174;
-const supabasePort = 4175;
+const demoPort = 4174;
 
 export default defineConfig({
   testDir: "./test/e2e",
@@ -18,7 +14,7 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? "github" : "list",
   use: {
-    baseURL: `http://127.0.0.1:${samplePort}`,
+    baseURL: `http://127.0.0.1:${demoPort}`,
     trace: "on-first-retry",
   },
   projects: [
@@ -27,18 +23,10 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
     },
   ],
-  webServer: [
-    {
-      command: `npm --prefix ${JSON.stringify(generatedSampleClient)} run dev -- --host 127.0.0.1 --port ${samplePort} --strictPort`,
-      url: `http://127.0.0.1:${samplePort}`,
-      reuseExistingServer: !process.env.CI,
-      timeout: 30_000,
-    },
-    {
-      command: `npm --prefix ${JSON.stringify(generatedSupabaseClient)} run dev -- --host 127.0.0.1 --port ${supabasePort} --strictPort`,
-      url: `http://127.0.0.1:${supabasePort}`,
-      reuseExistingServer: !process.env.CI,
-      timeout: 30_000,
-    },
-  ],
+  webServer: {
+    command: `npm --prefix ${JSON.stringify(generatedOpfsClient)} run dev -- --host 127.0.0.1 --port ${demoPort} --strictPort`,
+    url: `http://127.0.0.1:${demoPort}`,
+    reuseExistingServer: !process.env.CI,
+    timeout: 30_000,
+  },
 });

@@ -6,9 +6,9 @@ export const generatedTestRoot = resolve(
   "create-tinygres-generated-test",
 );
 
-export const generatedSampleClient = resolve(generatedTestRoot, "app/client");
+export const generatedOpfsClient = resolve(generatedTestRoot, "app/client");
 
-export const generatedSupabaseClient = resolve(
+export const generatedMemoryClient = resolve(
   generatedTestRoot,
-  "supabase-app/client",
+  "memory-app/client",
 );
