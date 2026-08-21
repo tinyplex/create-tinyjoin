@@ -98,7 +98,7 @@ async function installBuildAndCheck(client: string): Promise<void> {
   );
   expect(installedManifest).toMatchObject({
     name: "tinygres",
-    version: "0.0.4",
+    version: "0.0.5",
   });
 
   run(npm, ["run", "build"], client);
@@ -110,7 +110,7 @@ async function installBuildAndCheck(client: string): Promise<void> {
 async function packSiblingTinygres(): Promise<string> {
   if (!existsSync(resolve(tinygresRoot, "package.json"))) {
     throw new Error(
-      "Set CREATE_TINYGRES_DEPENDENCY to a packed TinyGres 0.0.4 package, or check out TinyGres beside create-tinygres.",
+      "Set CREATE_TINYGRES_DEPENDENCY to a packed TinyGres 0.0.5 package, or check out TinyGres beside create-tinygres.",
     );
   }
 
@@ -133,10 +133,10 @@ async function packSiblingTinygres(): Promise<string> {
   ) as Array<{ filename?: unknown; version?: unknown }>;
   const packageResult = packed[0];
   if (
-    packageResult?.version !== "0.0.4" ||
+    packageResult?.version !== "0.0.5" ||
     typeof packageResult.filename !== "string"
   ) {
-    throw new Error("Sibling TinyGres must pack as version 0.0.4");
+    throw new Error("Sibling TinyGres must pack as version 0.0.5");
   }
   return pathToFileURL(resolve(packages, packageResult.filename)).href;
 }

@@ -99,7 +99,7 @@ const config = {
       storage,
       usesOpfs: storage === "opfs",
       storageName: createStorageName(projectName),
-      tinygresDependency: process.env.CREATE_TINYGRES_DEPENDENCY ?? "^0.0.4",
+      tinygresDependency: process.env.CREATE_TINYGRES_DEPENDENCY ?? "^0.0.5",
     };
   },
   getFiles: () => [

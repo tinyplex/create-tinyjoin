@@ -172,7 +172,7 @@ describe("create-tinygres CLI", () => {
     const manifest = JSON.parse(
       await readFile(resolve(output, "published/client/package.json"), "utf8"),
     );
-    expect(manifest.dependencies.tinygres).toBe("^0.0.4");
+    expect(manifest.dependencies.tinygres).toBe("^0.0.5");
   });
 
   it("rejects path-like and existing project names", async () => {
