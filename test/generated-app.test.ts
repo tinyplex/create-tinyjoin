@@ -32,16 +32,28 @@ describe.sequential("generated apps", () => {
       resolve(generatedOpfsClient, "src/main.ts"),
       "utf8",
     );
-    expect(source).toMatch(/\bcreate\s*\(/);
+    expect(source).toContain(
+      "await create('opfs://tinygres-app-db-v1')",
+    );
+    expect(source).toContain(
+      "type Database = Awaited<ReturnType<typeof create>>",
+    );
     expect(source).toContain("database.exec(");
+    expect(source).toContain("schemaStatements.join(';\\n')");
     expect(source).toContain("database.query<");
     expect(source).toContain("database.query<TaskRow>(TASK_QUERY, [1])");
+    expect(source).toContain("await transaction.query(");
+    expect(source).toContain(
+      "await database.query('UPDATE tasks SET done = $1 WHERE id = $2'",
+    );
     expect(source).toContain("database.transaction(");
     expect(source).toContain("database.subscribe(");
     expect(source).toContain("database.close()");
     expect(source).toContain("JOIN task_tags");
     expect(source).toContain("JOIN tags");
-    expect(source).toMatch(/storage:\s*\{\s*kind:\s*['"]opfs['"]/);
+    expect(source).not.toContain("database.ready()");
+    expect(source).not.toContain("database.exec('UPDATE tasks SET done");
+    expect(source).not.toContain("storage:");
     expect(source).not.toContain("createClient");
     expect(source).not.toContain("replaceTable");
     expect(source).not.toContain("applyBatch");
@@ -51,7 +63,8 @@ describe.sequential("generated apps", () => {
       resolve(generatedMemoryClient, "src/main.ts"),
       "utf8",
     );
-    expect(memorySource).not.toMatch(/storage:\s*\{\s*kind:\s*['"]opfs['"]/);
+    expect(memorySource).toContain("await create('memory://')");
+    expect(memorySource).not.toContain("storage:");
     expect(memorySource).toContain("database.transaction(");
     expect(memorySource).toContain("JOIN task_tags");
     expect(memorySource).toContain("JOIN tags");

@@ -13,11 +13,12 @@ npm run dev
 
 ## What the app demonstrates
 
-The app opens TinyGres in its default dedicated module Worker, where the
+The app awaits TinyGres in its default dedicated module Worker, where the
 page-native database engine runs in Rust/WASM. It uses the conventional
 `create()`, `exec()`, `query()`, and `close()` API:
 
-- raw SQL creates the typed relational schema and performs local writes;
+- one atomic `exec()` script creates the typed relational schema;
+- parameterized `query()` calls perform local writes and reads;
 - a callback transaction commits related writes atomically;
 - a three-table join follows a many-to-many relationship;
 - a single-table aggregate summarizes the stored data; and
@@ -40,10 +41,12 @@ the data should survive reloads.
 
 ## Working with TinyGres
 
-TinyGres accepts one supported statement per `exec()` call. Use `$1`
-parameters for application values, run schema DDL as standalone atomic
-statements, and use `transaction(callback)` to group `INSERT`, `UPDATE`, and
-`DELETE` statements. Queries inside the callback see its staged rows.
+Use `query()` for one statement, including `$1` parameters for application
+values. Use `exec()` for one or more parameter-free statements that should
+succeed or fail as a single implicit transaction. The starter uses one such
+script for its complete schema bootstrap. Use `transaction(callback)` to group
+parameterized `INSERT`, `UPDATE`, and `DELETE` statements; queries inside the
+callback see its staged rows.
 
 TinyGres deliberately implements a bounded PostgreSQL-shaped dialect rather
 than a PostgreSQL server. The

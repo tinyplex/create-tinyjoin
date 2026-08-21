@@ -8,10 +8,10 @@ npm create tinygres@latest
 ```
 
 The generated app uses TinyGres's default dedicated module Worker and
-precompiled Rust/WASM engine. It creates a typed relational schema with raw SQL,
-writes data with atomic statements and a callback transaction, and renders a
-parameterized multi-table query plus an aggregate. Table subscriptions keep the
-UI current after each commit.
+precompiled Rust/WASM engine. It creates a typed relational schema with one
+atomic SQL script, writes data with parameterized statements and a callback
+transaction, and renders a parameterized multi-table query plus an aggregate.
+Table subscriptions keep the UI current after each commit.
 
 The only product choice is storage:
 

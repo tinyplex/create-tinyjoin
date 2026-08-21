@@ -81,15 +81,33 @@ describe("create-tinygres CLI", () => {
     const html = await readFile(resolve(project, "client/index.html"), "utf8");
     expect(html).toContain("<h1>TinyGres</h1>");
 
+    const readme = await readFile(resolve(project, "README.md"), "utf8");
+    const agentInstructions = await readFile(
+      resolve(project, "AGENTS.md"),
+      "utf8",
+    );
+    expect(readme).toContain("parameter-free statements");
+    expect(readme).toContain("single implicit transaction");
+    expect(agentInstructions).toContain("Await `create()`");
+    expect(`${readme}\n${agentInstructions}`).not.toMatch(/pglite/i);
+
     const source = await readFile(
       resolve(project, "client/src/main.ts"),
       "utf8",
     );
     expect(source).toContain("from 'tinygres'");
-    expect(source).toMatch(/\bcreate\s*\(/);
+    expect(source).toContain("await create('memory://')");
+    expect(source).toContain(
+      "type Database = Awaited<ReturnType<typeof create>>",
+    );
     expect(source).toContain("database.exec(");
+    expect(source).toContain("schemaStatements.join(';\\n')");
     expect(source).toContain("database.query<");
     expect(source).toContain("database.query<TaskRow>(TASK_QUERY, [1])");
+    expect(source).toContain("await transaction.query(");
+    expect(source).toContain(
+      "await database.query('UPDATE tasks SET done = $1 WHERE id = $2'",
+    );
     expect(source).toContain("database.transaction(");
     expect(source).toContain("database.subscribe(");
     expect(source).toContain("database.close()");
@@ -99,7 +117,9 @@ describe("create-tinygres CLI", () => {
     expect(source).not.toContain("replaceTable");
     expect(source).not.toContain("applyBatch");
     expect(source).not.toContain("../src");
-    expect(source).not.toContain("storage: {kind: 'opfs'");
+    expect(source).not.toContain("database.ready()");
+    expect(source).not.toContain("database.exec('UPDATE tasks SET done");
+    expect(source).not.toContain("storage:");
     expect(source).not.toMatch(/supabase/i);
   });
 
@@ -135,7 +155,7 @@ describe("create-tinygres CLI", () => {
       "utf8",
     );
     expect(source).toContain(
-      "storage: {kind: 'opfs', name: 'tinygres-opfs-app-db-v1'}",
+      "await create('opfs://tinygres-opfs-app-db-v1')",
     );
     expect(source).not.toMatch(/supabase/i);
   });

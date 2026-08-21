@@ -7,11 +7,11 @@ This is a generated TinyGres TypeScript/Vite starter.
   page-native database and Rust/WASM engine inside a dedicated Worker.
 - Keep the database standalone and local. External services belong in separate
   application code.
-- Use `create()`, parameterized `exec()`/`query()` calls, and `close()` as the
-  primary lifecycle.
-- Run schema DDL as standalone statements. Use `transaction(callback)` only for
-  related `INSERT`, `UPDATE`, and `DELETE` work, and keep the transaction object
-  inside its callback.
+- Await `create()`, use parameterized `query()` calls, use parameter-free
+  `exec()` scripts, and call `close()` during teardown.
+- Run related schema DDL in one atomic `exec()` bootstrap. Use
+  `transaction(callback)` for related parameterized `INSERT`, `UPDATE`, and
+  `DELETE` work, and keep the transaction object inside its callback.
 - Preserve the three-table many-to-many query, aggregate summary,
   subscription-driven re-query, and visible revision/error state when changing
   the demo.

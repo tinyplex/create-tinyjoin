@@ -2,6 +2,8 @@ import './style.css';
 
 import {create} from 'tinygres';
 
+type Database = Awaited<ReturnType<typeof create>>;
+
 type TaskRow = {
   task_id: number;
   title: string;
@@ -65,13 +67,13 @@ let renderTail = Promise.resolve();
 
 async function boot(): Promise<void> {
   setState('Opening…', 'loading');
-  const database = create({
+  const database = await create(
     {{#if usesOpfs}}
-    storage: {kind: 'opfs', name: '{{storageName}}'},
+    'opfs://{{storageName}}',
     {{else}}
-    storage: {kind: 'memory'},
+    'memory://',
     {{/if}}
-  });
+  );
   let unsubscribe = (): void => undefined;
 
   window.addEventListener(
@@ -84,7 +86,6 @@ async function boot(): Promise<void> {
     {once: true},
   );
 
-  await database.ready();
   statusElement.textContent = 'Creating the local relational schema…';
   await initializeDatabase(database);
   let observedRevision = database.getRevision();
@@ -156,7 +157,7 @@ async function boot(): Promise<void> {
 }
 
 async function initializeDatabase(
-  database: ReturnType<typeof create>,
+  database: Database,
 ): Promise<void> {
   const schemaStatements = [
     `CREATE TABLE IF NOT EXISTS tasks (
@@ -178,9 +179,7 @@ async function initializeDatabase(
     'CREATE INDEX IF NOT EXISTS task_tags_tag_id ON task_tags (tag_id)',
   ];
 
-  for (const statement of schemaStatements) {
-    await database.exec(statement);
-  }
+  await database.exec(schemaStatements.join(';\n'));
 
   const taskCount = await database.query<{task_count: number}>(
     'SELECT COUNT(*) AS task_count FROM tasks',
@@ -190,7 +189,7 @@ async function initializeDatabase(
   }
 
   await database.transaction(async (transaction) => {
-    await transaction.exec(
+    await transaction.query(
       `INSERT INTO tasks (id, title, done) VALUES
        (1, $1, true), (2, $2, false), (3, $3, false)`,
       [
@@ -210,7 +209,7 @@ async function initializeDatabase(
 }
 
 async function renderDashboard(
-  database: ReturnType<typeof create>,
+  database: Database,
   message?: string,
 ): Promise<void> {
   tasksElement.setAttribute('aria-busy', 'true');
@@ -246,7 +245,7 @@ async function renderDashboard(
 }
 
 function queueRender(
-  database: ReturnType<typeof create>,
+  database: Database,
   message: string,
 ): Promise<void> {
   const nextRender = renderTail.then(() => renderDashboard(database, message));
@@ -254,7 +253,7 @@ function queueRender(
   return nextRender;
 }
 
-async function addTask(database: ReturnType<typeof create>): Promise<void> {
+async function addTask(database: Database): Promise<void> {
   const title = titleInput.value.trim();
   const tagId = Number(tagSelect.value);
   if (!title || !Number.isSafeInteger(tagId)) {
@@ -278,11 +277,11 @@ async function addTask(database: ReturnType<typeof create>): Promise<void> {
       if (!Number.isSafeInteger(nextId)) {
         throw new Error('The demo task identifier range is exhausted.');
       }
-      await transaction.exec(
+      await transaction.query(
         'INSERT INTO tasks (id, title) VALUES ($1, $2)',
         [nextId, title],
       );
-      await transaction.exec(
+      await transaction.query(
         'INSERT INTO task_tags (task_id, tag_id) VALUES ($1, $2)',
         [nextId, tagId],
       );
@@ -299,7 +298,7 @@ async function addTask(database: ReturnType<typeof create>): Promise<void> {
 }
 
 async function toggleTask(
-  database: ReturnType<typeof create>,
+  database: Database,
   button: HTMLButtonElement,
 ): Promise<void> {
   const id = Number(button.dataset.taskId);
@@ -313,7 +312,7 @@ async function toggleTask(
   button.disabled = true;
   statusElement.textContent = `Updating task ${id} with parameterized SQL…`;
   try {
-    await database.exec('UPDATE tasks SET done = $1 WHERE id = $2', [done, id]);
+    await database.query('UPDATE tasks SET done = $1 WHERE id = $2', [done, id]);
   } catch (error) {
     button.disabled = false;
     showActionError(error);
