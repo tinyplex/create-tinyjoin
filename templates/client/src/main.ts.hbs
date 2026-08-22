@@ -1,424 +1,140 @@
 import './style.css';
 
-import {create} from 'tinygres';
+import {openDatabase, type Database, type Todo} from './database';
 
-type Database = Awaited<ReturnType<typeof create>>;
-
-type TaskRow = {
-  task_id: number;
-  title: string;
-  done: boolean;
-  tag_name: string | null;
-};
-
-type TaskSummaryRow = {
-  done: boolean;
-  task_count: number;
-};
-
-type TagRow = {
-  id: number;
-  name: string;
-};
-
-type MaximumIdRow = {
-  max_id: number | null;
-};
-
-type TaskView = {
-  id: number;
-  title: string;
-  done: boolean;
-  tags: string[];
-};
-
-const TASK_QUERY = `SELECT task.id AS task_id, task.title AS title,
-       task.done AS done, tag.name AS tag_name
-FROM tasks AS task
-LEFT JOIN task_tags AS task_tag ON task.id = task_tag.task_id
-LEFT JOIN tags AS tag ON task_tag.tag_id = tag.id
-WHERE task.id >= $1
-ORDER BY task.id, tag.name`;
-
-const stateElement = element<HTMLElement>('[data-testid="state"]');
-const revisionElement = element<HTMLElement>('[data-testid="revision"]');
-const invalidationsElement = element<HTMLElement>(
-  '[data-testid="invalidations"]',
+const form = requiredElement<HTMLFormElement>('[data-testid="todo-form"]');
+const titleInput = requiredElement<HTMLInputElement>(
+  '[data-testid="todo-title"]',
 );
-const totalCountElement = element<HTMLElement>(
-  '[data-testid="total-count"]',
-);
-const openCountElement = element<HTMLElement>('[data-testid="open-count"]');
-const doneCountElement = element<HTMLElement>('[data-testid="done-count"]');
-const tasksElement = element<HTMLUListElement>('[data-testid="tasks"]');
-const latencyElement = element<HTMLElement>(
-  '[data-testid="query-latency"]',
-);
-const statusElement = element<HTMLElement>('[data-testid="status"]');
-const errorElement = element<HTMLElement>('[data-testid="error"]');
-const taskForm = element<HTMLFormElement>('[data-testid="task-form"]');
-const titleInput = element<HTMLInputElement>('[data-testid="task-title"]');
-const tagSelect = element<HTMLSelectElement>('[data-testid="task-tag"]');
-const addButton = element<HTMLButtonElement>('[data-testid="add-task"]');
-const reloadButton = element<HTMLButtonElement>('[data-testid="reload"]');
+const todosElement = requiredElement<HTMLUListElement>('[data-testid="todos"]');
+const statusElement = requiredElement<HTMLElement>('[data-testid="status"]');
+const errorElement = requiredElement<HTMLElement>('[data-testid="error"]');
 
-let invalidations = 0;
-let renderTail = Promise.resolve();
+async function start(): Promise<void> {
+  const database = await openDatabase();
+  const unsubscribe = database.subscribe({tables: ['todos']}, () => {
+    runAction(() => renderTodos(database));
+  });
 
-async function boot(): Promise<void> {
-  setState('Opening…', 'loading');
-  const database = await create(
-    {{#if usesOpfs}}
-    'opfs://{{storageName}}',
-    {{else}}
-    'memory://',
-    {{/if}}
-  );
-  let unsubscribe = (): void => undefined;
-
-  window.addEventListener(
+  addEventListener(
     'pagehide',
     () => {
       unsubscribe();
-      delete window.__tinygresDemo;
       void database.close();
     },
     {once: true},
   );
 
-  statusElement.textContent = 'Creating the local relational schema…';
-  await initializeDatabase(database);
-  let observedRevision = database.getRevision();
-
-  unsubscribe = database.subscribe(
-    {tables: ['tasks', 'task_tags', 'tags']},
-    (event) => {
-      // The Worker can deliver the coalesced bootstrap invalidation after the
-      // final schema/seed RPC has resolved. It is already represented by the
-      // initial render, so count only revisions produced by later UI actions.
-      if (event.revision <= observedRevision) {
-        return;
-      }
-      observedRevision = event.revision;
-      invalidations += 1;
-      invalidationsElement.textContent = String(invalidations);
-      void queueRender(
-        database,
-        `Revision ${event.revision} changed ${event.tables.join(', ')}. The join and aggregate were re-run locally.`,
-      );
-    },
-  );
-
-  taskForm.addEventListener('submit', (event) => {
+  form.addEventListener('submit', (event) => {
     event.preventDefault();
-    void addTask(database);
-  });
-  tasksElement.addEventListener('click', (event) => {
-    const target = event.target;
-    if (!(target instanceof Element)) {
+    const title = titleInput.value.trim();
+    if (!title) {
       return;
     }
-    const button = target.closest<HTMLButtonElement>(
-      'button[data-testid="toggle-task"]',
-    );
-    if (button) {
-      void toggleTask(database, button);
-    }
-  });
-  reloadButton.addEventListener('click', () => window.location.reload());
-
-  await renderDashboard(database);
-  setState('Ready', 'ready');
-  setControlsEnabled(true);
-  statusElement.textContent =
-    {{#if usesOpfs}}
-    'Ready. Change the data, then reload—the OPFS database keeps it.';
-    {{else}}
-    'Ready. This memory database starts fresh on every reload.';
-    {{/if}}
-
-  window.__tinygresDemo = {
-    async benchmark(iterations) {
-      if (!Number.isSafeInteger(iterations) || iterations < 1) {
-        throw new TypeError('Benchmark iterations must be a positive integer');
-      }
-      const samples: number[] = [];
-      for (let iteration = 0; iteration < iterations; iteration += 1) {
-        const startedAt = performance.now();
-        const result = await database.query<TaskRow>(TASK_QUERY, [1]);
-        samples.push(performance.now() - startedAt);
-        if (result.rows.length < 3) {
-          throw new Error('Benchmark join returned an unexpected row count');
-        }
-      }
-      return samples;
-    },
-  };
-}
-
-async function initializeDatabase(
-  database: Database,
-): Promise<void> {
-  const schemaStatements = [
-    `CREATE TABLE IF NOT EXISTS tasks (
-      id INTEGER PRIMARY KEY,
-      title TEXT NOT NULL,
-      done BOOLEAN NOT NULL DEFAULT false
-    )`,
-    `CREATE TABLE IF NOT EXISTS tags (
-      id INTEGER PRIMARY KEY,
-      name TEXT NOT NULL
-    )`,
-    `CREATE TABLE IF NOT EXISTS task_tags (
-      task_id INTEGER NOT NULL,
-      tag_id INTEGER NOT NULL,
-      PRIMARY KEY (task_id, tag_id)
-    )`,
-    'CREATE INDEX IF NOT EXISTS tasks_done ON tasks (done)',
-    'CREATE UNIQUE INDEX IF NOT EXISTS tags_name ON tags (name)',
-    'CREATE INDEX IF NOT EXISTS task_tags_tag_id ON task_tags (tag_id)',
-  ];
-
-  await database.exec(schemaStatements.join(';\n'));
-
-  const taskCount = await database.query<{task_count: number}>(
-    'SELECT COUNT(*) AS task_count FROM tasks',
-  );
-  if (taskCount.rows[0]?.task_count !== 0) {
-    return;
-  }
-
-  await database.transaction(async (transaction) => {
-    await transaction.query(
-      `INSERT INTO tasks (id, title, done) VALUES
-       (1, $1, true), (2, $2, false), (3, $3, false)`,
-      [
-        'Read the SQL compatibility matrix',
-        'Build the standalone database demo',
-        'Reload to prove local persistence',
-      ],
-    );
-    await transaction.exec(
-      "INSERT INTO tags (id, name) VALUES (1, 'docs'), (2, 'demo'), (3, 'storage')",
-    );
-    await transaction.exec(
-      `INSERT INTO task_tags (task_id, tag_id) VALUES
-       (1, 1), (2, 2), (2, 3), (3, 3)`,
-    );
-  });
-}
-
-async function renderDashboard(
-  database: Database,
-  message?: string,
-): Promise<void> {
-  tasksElement.setAttribute('aria-busy', 'true');
-  const startedAt = performance.now();
-  const [taskResult, summaryResult, tagResult] = await Promise.all([
-    database.query<TaskRow>(TASK_QUERY, [1]),
-    database.query<TaskSummaryRow>(
-      `SELECT done, COUNT(*) AS task_count
-       FROM tasks
-       GROUP BY done
-       ORDER BY done`,
-    ),
-    database.query<TagRow>('SELECT id, name FROM tags ORDER BY name'),
-  ]);
-  const elapsed = performance.now() - startedAt;
-
-  const tasks = groupTasks(taskResult.rows);
-  const openCount = countFor(summaryResult.rows, false);
-  const doneCount = countFor(summaryResult.rows, true);
-
-  revisionElement.textContent = String(taskResult.revision);
-  totalCountElement.textContent = String(openCount + doneCount);
-  openCountElement.textContent = String(openCount);
-  doneCountElement.textContent = String(doneCount);
-  latencyElement.textContent = `${taskResult.rows.length} joined rows grouped into ${tasks.length} tasks · join + aggregate + tags in ${elapsed.toFixed(2)} ms`;
-  renderTasks(tasks);
-  renderTags(tagResult.rows);
-  tasksElement.setAttribute('aria-busy', 'false');
-
-  if (message) {
-    statusElement.textContent = message;
-  }
-}
-
-function queueRender(
-  database: Database,
-  message: string,
-): Promise<void> {
-  const nextRender = renderTail.then(() => renderDashboard(database, message));
-  renderTail = nextRender.catch(showActionError);
-  return nextRender;
-}
-
-async function addTask(database: Database): Promise<void> {
-  const title = titleInput.value.trim();
-  const tagId = Number(tagSelect.value);
-  if (!title || !Number.isSafeInteger(tagId)) {
-    showActionError(new Error('Enter a task and choose a tag.'));
-    return;
-  }
-
-  clearError();
-  addButton.disabled = true;
-  titleInput.disabled = true;
-  tagSelect.disabled = true;
-  statusElement.textContent =
-    'Staging the task and its tag link in one transaction…';
-
-  try {
-    await database.transaction(async (transaction) => {
-      const maximum = await transaction.query<MaximumIdRow>(
-        'SELECT MAX(id) AS max_id FROM tasks',
-      );
-      const nextId = (maximum.rows[0]?.max_id ?? 0) + 1;
-      if (!Number.isSafeInteger(nextId)) {
-        throw new Error('The demo task identifier range is exhausted.');
-      }
-      await transaction.query(
-        'INSERT INTO tasks (id, title) VALUES ($1, $2)',
-        [nextId, title],
-      );
-      await transaction.query(
-        'INSERT INTO task_tags (task_id, tag_id) VALUES ($1, $2)',
-        [nextId, tagId],
-      );
+    runAction(async () => {
+      await database.sql`
+        INSERT INTO todos (id, title, done)
+        VALUES (${crypto.randomUUID()}, ${title}, ${false})
+      `;
+      form.reset();
+      titleInput.focus();
     });
-    taskForm.reset();
-    titleInput.focus();
-  } catch (error) {
-    showActionError(error);
-  } finally {
-    addButton.disabled = false;
-    titleInput.disabled = false;
-    tagSelect.disabled = false;
-  }
-}
+  });
 
-async function toggleTask(
-  database: Database,
-  button: HTMLButtonElement,
-): Promise<void> {
-  const id = Number(button.dataset.taskId);
-  const done = button.dataset.done !== 'true';
-  if (!Number.isSafeInteger(id)) {
-    showActionError(new Error('The selected task has an invalid identifier.'));
-    return;
-  }
-
-  clearError();
-  button.disabled = true;
-  statusElement.textContent = `Updating task ${id} with parameterized SQL…`;
-  try {
-    await database.query('UPDATE tasks SET done = $1 WHERE id = $2', [done, id]);
-  } catch (error) {
-    button.disabled = false;
-    showActionError(error);
-  }
-}
-
-function groupTasks(rows: TaskRow[]): TaskView[] {
-  const tasks = new Map<number, TaskView>();
-  for (const row of rows) {
-    const task = tasks.get(row.task_id) ?? {
-      id: row.task_id,
-      title: row.title,
-      done: row.done,
-      tags: [],
-    };
-    if (row.tag_name !== null) {
-      task.tags.push(row.tag_name);
+  todosElement.addEventListener('change', (event) => {
+    const checkbox = event.target;
+    const id =
+      checkbox instanceof HTMLInputElement
+        ? checkbox.dataset.todoId
+        : undefined;
+    if (
+      !(checkbox instanceof HTMLInputElement) ||
+      checkbox.dataset.action !== 'toggle' ||
+      !id
+    ) {
+      return;
     }
-    tasks.set(row.task_id, task);
-  }
-  return [...tasks.values()];
+    runAction(async () => {
+      await database.sql`
+        UPDATE todos SET done = ${checkbox.checked}
+        WHERE id = ${id}
+      `;
+    });
+  });
+
+  todosElement.addEventListener('click', (event) => {
+    const target = event.target;
+    const button =
+      target instanceof Element
+        ? target.closest<HTMLButtonElement>('button[data-action="delete"]')
+        : null;
+    const id = button?.dataset.todoId;
+    if (!id) {
+      return;
+    }
+    runAction(async () => {
+      await database.sql`DELETE FROM todos WHERE id = ${id}`;
+    });
+  });
+
+  await renderTodos(database);
+  titleInput.focus();
 }
 
-function renderTasks(tasks: TaskView[]): void {
-  if (tasks.length === 0) {
-    const empty = document.createElement('li');
-    empty.className = 'empty';
-    empty.textContent = 'No tasks yet. Add the first one above.';
-    tasksElement.replaceChildren(empty);
-    return;
-  }
-
-  tasksElement.replaceChildren(
-    ...tasks.map((task) => {
-      const item = document.createElement('li');
-      item.className = `task${task.done ? ' is-done' : ''}`;
-      item.dataset.taskId = String(task.id);
-
-      const toggle = document.createElement('button');
-      toggle.className = 'task-toggle';
-      toggle.type = 'button';
-      toggle.dataset.testid = 'toggle-task';
-      toggle.dataset.taskId = String(task.id);
-      toggle.dataset.done = String(task.done);
-      toggle.setAttribute(
-        'aria-label',
-        `${task.done ? 'Reopen' : 'Complete'} ${task.title}`,
-      );
-      toggle.textContent = task.done ? '✓' : '';
-
-      const content = document.createElement('div');
-      content.className = 'task-content';
-      const title = document.createElement('strong');
-      title.textContent = task.title;
-      const metadata = document.createElement('div');
-      metadata.className = 'task-metadata';
-      const id = document.createElement('span');
-      id.className = 'task-id';
-      id.textContent = `#${task.id}`;
-      metadata.append(
-        id,
-        ...task.tags.map((tag) => {
-          const chip = document.createElement('span');
-          chip.className = 'tag';
-          chip.dataset.tag = tag;
-          chip.textContent = tag;
-          return chip;
-        }),
-      );
-      content.append(title, metadata);
-      item.append(toggle, content);
-      return item;
-    }),
+async function renderTodos(database: Database): Promise<void> {
+  todosElement.setAttribute('aria-busy', 'true');
+  const {rows} = await database.query<Todo>(
+    'SELECT id, title, done FROM todos ORDER BY title, id',
   );
-}
-
-function renderTags(tags: TagRow[]): void {
-  const selected = tagSelect.value;
-  tagSelect.replaceChildren(
-    ...tags.map((tag) => {
-      const option = document.createElement('option');
-      option.value = String(tag.id);
-      option.textContent = tag.name;
-      return option;
-    }),
+  todosElement.replaceChildren(
+    ...(rows.length === 0 ? [createEmptyState()] : rows.map(createTodo)),
   );
-  if (tags.some((tag) => String(tag.id) === selected)) {
-    tagSelect.value = selected;
-  }
+  todosElement.setAttribute('aria-busy', 'false');
+  statusElement.textContent = 'Ready';
 }
 
-function countFor(rows: TaskSummaryRow[], done: boolean): number {
-  return rows.find((row) => row.done === done)?.task_count ?? 0;
+function createTodo(todo: Todo): HTMLLIElement {
+  const item = document.createElement('li');
+  item.className = `todo${todo.done ? ' is-done' : ''}`;
+  item.dataset.todoId = todo.id;
+
+  const label = document.createElement('label');
+  const checkbox = document.createElement('input');
+  checkbox.type = 'checkbox';
+  checkbox.checked = todo.done;
+  checkbox.dataset.action = 'toggle';
+  checkbox.dataset.todoId = todo.id;
+  checkbox.setAttribute(
+    'aria-label',
+    `Mark ${todo.title} as ${todo.done ? 'not done' : 'done'}`,
+  );
+
+  const title = document.createElement('span');
+  title.textContent = todo.title;
+  label.append(checkbox, title);
+
+  const deleteButton = document.createElement('button');
+  deleteButton.type = 'button';
+  deleteButton.className = 'delete';
+  deleteButton.dataset.action = 'delete';
+  deleteButton.dataset.todoId = todo.id;
+  deleteButton.setAttribute('aria-label', `Delete ${todo.title}`);
+  deleteButton.textContent = 'Delete';
+
+  item.append(label, deleteButton);
+  return item;
 }
 
-function setControlsEnabled(enabled: boolean): void {
-  addButton.disabled = !enabled;
-  titleInput.disabled = !enabled;
-  tagSelect.disabled = !enabled;
-  reloadButton.disabled = !enabled;
+function createEmptyState(): HTMLLIElement {
+  const item = document.createElement('li');
+  item.className = 'empty';
+  item.textContent = 'No todos yet. Add your first one above.';
+  return item;
 }
 
-function setState(label: string, state: 'loading' | 'ready' | 'error'): void {
-  stateElement.textContent = label;
-  stateElement.dataset.state = state;
-  stateElement.dataset.ready = String(state === 'ready');
+function runAction(action: () => Promise<unknown>): void {
+  clearError();
+  void action().catch(showError);
 }
 
 function clearError(): void {
@@ -426,33 +142,18 @@ function clearError(): void {
   errorElement.textContent = '';
 }
 
-function showActionError(error: unknown): void {
-  const message = error instanceof Error ? error.message : String(error);
-  statusElement.textContent = 'The last local SQL operation failed.';
+function showError(error: unknown): void {
+  statusElement.textContent = 'Something went wrong.';
   errorElement.hidden = false;
-  errorElement.textContent = message;
+  errorElement.textContent = error instanceof Error ? error.message : String(error);
 }
 
-function showFatalError(error: unknown): void {
-  setState('Failed', 'error');
-  setControlsEnabled(false);
-  statusElement.textContent = 'TinyGres could not open this local database.';
-  const message = error instanceof Error ? error.message : String(error);
-  errorElement.hidden = false;
-  errorElement.textContent =
-    {{#if usesOpfs}}
-    `${message}\n\nOPFS requires a secure context, browser support, and an exclusive lock for this database name.`;
-    {{else}}
-    message;
-    {{/if}}
-}
-
-function element<ElementType extends Element>(selector: string): ElementType {
-  const match = document.querySelector<ElementType>(selector);
-  if (!match) {
-    throw new Error(`Starter element not found: ${selector}`);
+function requiredElement<ElementType extends Element>(selector: string): ElementType {
+  const element = document.querySelector<ElementType>(selector);
+  if (!element) {
+    throw new Error(`Missing starter element: ${selector}`);
   }
-  return match;
+  return element;
 }
 
-void boot().catch(showFatalError);
+void start().catch(showError);

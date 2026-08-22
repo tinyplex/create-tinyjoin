@@ -12,8 +12,8 @@ const templateRoot = join(dirname(fileURLToPath(import.meta.url)), "templates");
 const args = process.argv.slice(2);
 
 const STORAGE_OPTIONS = [
-  { title: "OPFS (recommended)", value: "opfs" },
-  { title: "Memory", value: "memory" },
+  { title: "Save data across reloads (recommended)", value: "opfs" },
+  { title: "Start fresh each time", value: "memory" },
 ] as const;
 
 const optionCatalog = {
@@ -69,14 +69,14 @@ const config = {
     {
       type: "select" as const,
       name: "storage",
-      message: "Database storage:",
+      message: "Todo data:",
       choices: [...STORAGE_OPTIONS],
       initial: 0,
     },
     {
       type: "confirm" as const,
       name: "installAndRun",
-      message: "Install dependencies and start the demo?",
+      message: "Install dependencies and start the app?",
       initial: true,
     },
   ],
@@ -107,47 +107,47 @@ const config = {
     { template: "AGENTS.md.hbs", output: "AGENTS.md", prettier: true },
     {
       template: "client/package.json.hbs",
-      output: "client/package.json",
+      output: "package.json",
       prettier: true,
     },
     {
       template: "client/.gitignore.hbs",
-      output: "client/.gitignore",
+      output: ".gitignore",
     },
     {
       template: "client/index.html.hbs",
-      output: "client/index.html",
+      output: "index.html",
       prettier: true,
     },
     {
       template: "client/tsconfig.json.hbs",
-      output: "client/tsconfig.json",
+      output: "tsconfig.json",
+      prettier: true,
+    },
+    {
+      template: "client/src/database.ts.hbs",
+      output: "src/database.ts",
       prettier: true,
     },
     {
       template: "client/src/main.ts.hbs",
-      output: "client/src/main.ts",
+      output: "src/main.ts",
       prettier: true,
     },
     {
       template: "client/src/style.css.hbs",
-      output: "client/src/style.css",
-      prettier: true,
-    },
-    {
-      template: "client/src/vite-env.d.ts.hbs",
-      output: "client/src/vite-env.d.ts",
+      output: "src/style.css",
       prettier: true,
     },
   ],
   templateRoot,
   installCommand: "{pm} install",
   devCommand: "{pm} run dev",
-  workingDirectory: "client",
+  workingDirectory: ".",
   onSuccess: (projectName: string) => {
     const packageManager = detectPackageManager();
     console.log("Next steps:");
-    console.log(`  cd ${projectName}/client`);
+    console.log(`  cd ${projectName}`);
     console.log(`  ${packageManager} install`);
     console.log(`  ${packageManager} run dev`);
   },

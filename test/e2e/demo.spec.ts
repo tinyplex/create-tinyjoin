@@ -1,93 +1,49 @@
 import { expect, test } from "@playwright/test";
 
-test("the generated app writes, joins, subscribes, transacts, and reopens OPFS", async ({
+test("the generated app adds, updates, deletes, and reloads saved todos", async ({
   page,
 }) => {
+  const consoleErrors: string[] = [];
+  const pageErrors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") {
+      consoleErrors.push(message.text());
+    }
+  });
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+
   await page.goto("/");
+  await expect(page.getByTestId("status")).toHaveText("Ready");
+  await expect(page.getByTestId("error")).toBeHidden();
 
-  await expect(page.getByTestId("state")).toHaveText("Ready");
-  await expect(page.getByTestId("storage")).toContainText("OPFS");
-  await expect(page.getByTestId("total-count")).toHaveText("3");
-  await expect(page.getByTestId("open-count")).toHaveText("2");
-  await expect(page.getByTestId("done-count")).toHaveText("1");
+  const title = `Ship a tiny starter ${Date.now()}`;
+  await page.getByTestId("todo-title").fill(title);
+  await page
+    .getByTestId("todo-form")
+    .getByRole("button", { name: "Add" })
+    .click();
+
+  const todo = page.locator("li.todo").filter({ hasText: title });
+  await expect(todo).toHaveCount(1);
+  await expect(todo).not.toHaveClass(/is-done/);
+
+  await todo.locator('input[data-action="toggle"]').check();
+  await expect(todo).toHaveClass(/is-done/);
+
+  await page.reload();
+  await expect(page.getByTestId("status")).toHaveText("Ready");
+  const reopenedTodo = page.locator("li.todo").filter({ hasText: title });
+  await expect(reopenedTodo).toHaveCount(1);
+  await expect(reopenedTodo).toHaveClass(/is-done/);
+
+  await reopenedTodo.getByRole("button", { name: `Delete ${title}` }).click();
+  await expect(page.locator("li.todo").filter({ hasText: title })).toHaveCount(
+    0,
+  );
   await expect(
-    page.locator('[data-testid="tasks"] > [data-task-id]'),
-  ).toHaveCount(3);
-  const multiTaggedTask = page.locator('li[data-task-id="2"]');
-  await expect(multiTaggedTask.locator("[data-tag]")).toHaveCount(2);
-  await expect(multiTaggedTask).toContainText("demo");
-  await expect(multiTaggedTask).toContainText("storage");
-  await expect(page.getByTestId("query-latency")).toContainText(
-    "4 joined rows grouped into 3 tasks",
-  );
-  await expect(page.getByTestId("invalidations")).toHaveText("0");
+    page.getByText("No todos yet. Add your first one above."),
+  ).toBeVisible();
   await expect(page.getByTestId("error")).toBeHidden();
-
-  const initialRevision = Number(
-    await page.getByTestId("revision").textContent(),
-  );
-  expect(Number.isSafeInteger(initialRevision) && initialRevision > 0).toBe(
-    true,
-  );
-
-  const benchmark = await page.evaluate(() =>
-    (
-      globalThis as typeof globalThis & {
-        __tinygresDemo: { benchmark(iterations: number): Promise<number[]> };
-      }
-    ).__tinygresDemo.benchmark(2),
-  );
-  expect(benchmark).toHaveLength(2);
-  expect(
-    benchmark.every((sample) => Number.isFinite(sample) && sample >= 0),
-  ).toBe(true);
-
-  await page.getByTestId("task-title").fill("Prove generated transactions");
-  await page.getByTestId("task-tag").selectOption({ label: "storage" });
-  await page.getByTestId("add-task").click();
-
-  await expect(page.getByTestId("invalidations")).toHaveText("1");
-  await expect(page.getByTestId("revision")).toHaveText(
-    String(initialRevision + 1),
-  );
-  await expect(page.getByTestId("total-count")).toHaveText("4");
-  await expect(page.getByTestId("open-count")).toHaveText("3");
-  await expect(page.getByTestId("done-count")).toHaveText("1");
-  const insertedTask = page.locator('li[data-task-id="4"]');
-  await expect(insertedTask).toContainText("Prove generated transactions");
-  await expect(insertedTask).toContainText("storage");
-  await expect(page.getByTestId("query-latency")).toContainText(
-    "5 joined rows grouped into 4 tasks",
-  );
-  await expect(page.getByTestId("status")).toContainText(
-    "The join and aggregate were re-run locally",
-  );
-
-  await insertedTask.getByTestId("toggle-task").click();
-  await expect(page.getByTestId("invalidations")).toHaveText("2");
-  await expect(page.getByTestId("revision")).toHaveText(
-    String(initialRevision + 2),
-  );
-  await expect(page.getByTestId("open-count")).toHaveText("2");
-  await expect(page.getByTestId("done-count")).toHaveText("2");
-  await expect(insertedTask).toHaveClass(/is-done/);
-
-  await page.getByTestId("reload").click();
-
-  await expect(page.getByTestId("state")).toHaveText("Ready");
-  await expect(page.getByTestId("revision")).toHaveText(
-    String(initialRevision + 2),
-  );
-  await expect(page.getByTestId("invalidations")).toHaveText("0");
-  await expect(page.getByTestId("total-count")).toHaveText("4");
-  await expect(page.getByTestId("open-count")).toHaveText("2");
-  await expect(page.getByTestId("done-count")).toHaveText("2");
-  await expect(page.locator('li[data-task-id="4"]')).toContainText(
-    "Prove generated transactions",
-  );
-  await expect(page.locator('li[data-task-id="4"]')).toHaveClass(/is-done/);
-  await expect(page.getByTestId("status")).toContainText(
-    "OPFS database keeps it",
-  );
-  await expect(page.getByTestId("error")).toBeHidden();
+  expect(consoleErrors).toEqual([]);
+  expect(pageErrors).toEqual([]);
 });

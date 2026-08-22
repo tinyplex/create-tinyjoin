@@ -5,8 +5,8 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
 import {
-  generatedMemoryClient,
-  generatedOpfsClient,
+  generatedFreshApp,
+  generatedSavedApp,
   generatedTestRoot,
 } from "./paths.js";
 
@@ -24,54 +24,38 @@ beforeAll(async () => {
 });
 
 describe.sequential("generated apps", () => {
-  it("builds the memory and OPFS demos against current TinyGres", async () => {
+  it("builds saved and fresh todo starters against current TinyGres", async () => {
     generate("app", "opfs");
-    generate("memory-app", "memory");
+    generate("fresh-app", "memory");
 
-    const source = await readFile(
-      resolve(generatedOpfsClient, "src/main.ts"),
+    const database = await readFile(
+      resolve(generatedSavedApp, "src/database.ts"),
       "utf8",
     );
-    expect(source).toContain(
-      "await create('opfs://tinygres-app-db-v1')",
+    const source = await readFile(
+      resolve(generatedSavedApp, "src/main.ts"),
+      "utf8",
     );
-    expect(source).toContain(
-      "type Database = Awaited<ReturnType<typeof create>>",
-    );
-    expect(source).toContain("database.exec(");
-    expect(source).toContain("schemaStatements.join(';\\n')");
-    expect(source).toContain("database.query<");
-    expect(source).toContain("database.query<TaskRow>(TASK_QUERY, [1])");
-    expect(source).toContain("await transaction.query(");
-    expect(source).toContain(
-      "await database.query('UPDATE tasks SET done = $1 WHERE id = $2'",
-    );
-    expect(source).toContain("database.transaction(");
+    expect(database).toContain("await create('opfs://tinygres-app-db-v1')");
+    expect(database).toContain("CREATE TABLE IF NOT EXISTS todos");
+    expect(source).toContain("crypto.randomUUID()");
+    expect(source).toContain("INSERT INTO todos");
+    expect(source).toContain("UPDATE todos SET done");
+    expect(source).toContain("DELETE FROM todos");
     expect(source).toContain("database.subscribe(");
     expect(source).toContain("database.close()");
-    expect(source).toContain("JOIN task_tags");
-    expect(source).toContain("JOIN tags");
-    expect(source).not.toContain("database.ready()");
-    expect(source).not.toContain("database.exec('UPDATE tasks SET done");
-    expect(source).not.toContain("storage:");
-    expect(source).not.toContain("createClient");
-    expect(source).not.toContain("replaceTable");
-    expect(source).not.toContain("applyBatch");
-    expect(source).not.toMatch(/supabase/i);
+    expect(source).not.toMatch(
+      /__tinygresDemo|performance\.now|JOIN|GROUP BY|revision|invalidation|latency|benchmark|transaction\(/i,
+    );
 
-    const memorySource = await readFile(
-      resolve(generatedMemoryClient, "src/main.ts"),
+    const freshDatabase = await readFile(
+      resolve(generatedFreshApp, "src/database.ts"),
       "utf8",
     );
-    expect(memorySource).toContain("await create('memory://')");
-    expect(memorySource).not.toContain("storage:");
-    expect(memorySource).toContain("database.transaction(");
-    expect(memorySource).toContain("JOIN task_tags");
-    expect(memorySource).toContain("JOIN tags");
-    expect(memorySource).toContain("memory database starts fresh");
+    expect(freshDatabase).toContain("await create('memory://')");
 
-    await installBuildAndCheck(generatedOpfsClient);
-    await installBuildAndCheck(generatedMemoryClient);
+    await installBuildAndCheck(generatedSavedApp);
+    await installBuildAndCheck(generatedFreshApp);
   }, 240_000);
 });
 
@@ -93,30 +77,27 @@ function generate(projectName: string, storage: "memory" | "opfs"): void {
   );
 }
 
-async function installBuildAndCheck(client: string): Promise<void> {
+async function installBuildAndCheck(app: string): Promise<void> {
   const manifest = JSON.parse(
-    await readFile(resolve(client, "package.json"), "utf8"),
+    await readFile(resolve(app, "package.json"), "utf8"),
   );
   expect(manifest.dependencies.tinygres).toBe(tinygresDependency);
 
-  run(npm, ["install", "--no-audit", "--no-fund"], client);
+  run(npm, ["install", "--no-audit", "--no-fund"], app);
   expect(
-    (await lstat(resolve(client, "node_modules/tinygres"))).isSymbolicLink(),
+    (await lstat(resolve(app, "node_modules/tinygres"))).isSymbolicLink(),
   ).toBe(false);
   const installedManifest = JSON.parse(
-    await readFile(
-      resolve(client, "node_modules/tinygres/package.json"),
-      "utf8",
-    ),
+    await readFile(resolve(app, "node_modules/tinygres/package.json"), "utf8"),
   );
   expect(installedManifest).toMatchObject({
     name: "tinygres",
     version: "0.0.5",
   });
 
-  run(npm, ["run", "build"], client);
+  run(npm, ["run", "build"], app);
 
-  const assets = await readdir(resolve(client, "dist/assets"));
+  const assets = await readdir(resolve(app, "dist/assets"));
   expect(assets.some((file) => file.endsWith(".wasm"))).toBe(true);
 }
 

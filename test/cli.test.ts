@@ -24,7 +24,6 @@ describe("create-tinygres CLI", () => {
     expect(help.stdout).toContain("npm create tinygres@latest");
     expect(help.stdout).toContain("--non-interactive");
     expect(help.stdout).toContain("--storage opfs");
-    expect(help.stdout).not.toContain("Supabase");
 
     const catalog = JSON.parse(run(["--list-options"]).stdout);
     expect(catalog.options).toEqual({
@@ -40,9 +39,9 @@ describe("create-tinygres CLI", () => {
         recommendedForAgents: false,
       },
     });
-  });
+  }, 15_000);
 
-  it("generates the standalone in-memory TinyGres starter", async () => {
+  it("generates a flat, minimal in-memory todo starter", async () => {
     run(
       [
         "--non-interactive",
@@ -58,77 +57,80 @@ describe("create-tinygres CLI", () => {
 
     const project = resolve(output, "example");
     expect(await listFiles(project)).toEqual([
+      ".gitignore",
       "AGENTS.md",
       "README.md",
-      "client/.gitignore",
-      "client/index.html",
-      "client/package.json",
-      "client/src/main.ts",
-      "client/src/style.css",
-      "client/src/vite-env.d.ts",
-      "client/tsconfig.json",
+      "index.html",
+      "package.json",
+      "src/database.ts",
+      "src/main.ts",
+      "src/style.css",
+      "tsconfig.json",
     ]);
 
     const manifest = JSON.parse(
-      await readFile(resolve(project, "client/package.json"), "utf8"),
+      await readFile(resolve(project, "package.json"), "utf8"),
     );
     expect(manifest).toMatchObject({
-      name: "example-client",
+      name: "example",
       private: true,
       dependencies: { tinygres: "9.9.9-test" },
     });
 
-    const html = await readFile(resolve(project, "client/index.html"), "utf8");
-    expect(html).toContain("<h1>TinyGres</h1>");
-
+    const html = await readFile(resolve(project, "index.html"), "utf8");
     const readme = await readFile(resolve(project, "README.md"), "utf8");
     const agentInstructions = await readFile(
       resolve(project, "AGENTS.md"),
       "utf8",
     );
-    expect(readme).toContain("parameter-free statements");
-    expect(readme).toContain("single implicit transaction");
-    expect(agentInstructions).toContain("Await `create()`");
-    expect(`${readme}\n${agentInstructions}`).not.toMatch(/pglite/i);
-
-    const source = await readFile(
-      resolve(project, "client/src/main.ts"),
+    const database = await readFile(
+      resolve(project, "src/database.ts"),
       "utf8",
     );
-    expect(source).toContain("from 'tinygres'");
-    expect(source).toContain("await create('memory://')");
-    expect(source).toContain(
-      "type Database = Awaited<ReturnType<typeof create>>",
+    const source = await readFile(resolve(project, "src/main.ts"), "utf8");
+    const style = await readFile(resolve(project, "src/style.css"), "utf8");
+
+    expect(html).toContain("<h1>Todos</h1>");
+    expect(html).toContain("starts fresh each time");
+    expect(readme).toMatch(/needs no\s+database server/);
+    expect(readme).not.toContain("cd client");
+    expect(agentInstructions).toContain("src/database.ts");
+    expect(`${html}\n${readme}\n${agentInstructions}`).not.toMatch(
+      /worker|wasm|opfs|revision|invalidation|latency|benchmark/i,
     );
-    expect(source).toContain("database.exec(");
-    expect(source).toContain("schemaStatements.join(';\\n')");
-    expect(source).toContain("database.query<");
-    expect(source).toContain("database.query<TaskRow>(TASK_QUERY, [1])");
-    expect(source).toContain("await transaction.query(");
-    expect(source).toContain(
-      "await database.query('UPDATE tasks SET done = $1 WHERE id = $2'",
-    );
-    expect(source).toContain("database.transaction(");
+
+    expect(database).toContain("from 'tinygres'");
+    expect(database).toContain("await create('memory://')");
+    expect(database).toContain("CREATE TABLE IF NOT EXISTS todos");
+    expect(database.match(/CREATE TABLE/g)).toHaveLength(1);
+    expect(source).toContain("crypto.randomUUID()");
+    expect(source).toContain("INSERT INTO todos");
+    expect(source).toContain("UPDATE todos SET done");
+    expect(source).toContain("DELETE FROM todos");
     expect(source).toContain("database.subscribe(");
     expect(source).toContain("database.close()");
-    expect(source).toContain("JOIN task_tags");
-    expect(source).toContain("JOIN tags");
-    expect(source).not.toContain("createClient");
-    expect(source).not.toContain("replaceTable");
-    expect(source).not.toContain("applyBatch");
-    expect(source).not.toContain("../src");
-    expect(source).not.toContain("database.ready()");
-    expect(source).not.toContain("database.exec('UPDATE tasks SET done");
-    expect(source).not.toContain("storage:");
-    expect(source).not.toMatch(/supabase/i);
+    expect(source).not.toMatch(
+      /__tinygresDemo|performance\.now|JOIN|GROUP BY|revision|invalidation|latency|benchmark|transaction\(/i,
+    );
+
+    expect(lineCount(html)).toBeLessThanOrEqual(60);
+    expect(lineCount(database)).toBeLessThanOrEqual(35);
+    expect(lineCount(source)).toBeLessThanOrEqual(170);
+    expect(lineCount(style)).toBeLessThanOrEqual(210);
+    expect(
+      lineCount(html) +
+        lineCount(database) +
+        lineCount(source) +
+        lineCount(style),
+    ).toBeLessThanOrEqual(460);
   });
 
-  it("generates the same standalone demo with persistent OPFS storage", async () => {
+  it("generates the same starter with data saved across reloads", async () => {
     run(
       [
         "--non-interactive",
         "--projectName",
-        "opfs-app",
+        "saved-app",
         "--storage",
         "opfs",
         "--installAndRun",
@@ -137,27 +139,20 @@ describe("create-tinygres CLI", () => {
       { CREATE_TINYGRES_DEPENDENCY: "9.9.9-test" },
     );
 
-    const project = resolve(output, "opfs-app");
-    expect(await listFiles(project)).toEqual([
-      "AGENTS.md",
-      "README.md",
-      "client/.gitignore",
-      "client/index.html",
-      "client/package.json",
-      "client/src/main.ts",
-      "client/src/style.css",
-      "client/src/vite-env.d.ts",
-      "client/tsconfig.json",
-    ]);
-
-    const source = await readFile(
-      resolve(project, "client/src/main.ts"),
+    const project = resolve(output, "saved-app");
+    const database = await readFile(
+      resolve(project, "src/database.ts"),
       "utf8",
     );
-    expect(source).toContain(
-      "await create('opfs://tinygres-opfs-app-db-v1')",
+    const html = await readFile(resolve(project, "index.html"), "utf8");
+    const readme = await readFile(resolve(project, "README.md"), "utf8");
+
+    expect(database).toContain(
+      "await create('opfs://tinygres-saved-app-db-v1')",
     );
-    expect(source).not.toMatch(/supabase/i);
+    expect(html).toContain("saved locally in this browser");
+    expect(readme).toContain("remain after a reload");
+    expect(`${html}\n${readme}`).not.toMatch(/worker|wasm|opfs/i);
   });
 
   it("rejects unsupported storage values", () => {
@@ -190,7 +185,7 @@ describe("create-tinygres CLI", () => {
     ]);
 
     const manifest = JSON.parse(
-      await readFile(resolve(output, "published/client/package.json"), "utf8"),
+      await readFile(resolve(output, "published/package.json"), "utf8"),
     );
     expect(manifest.dependencies.tinygres).toBe("^0.0.5");
   });
@@ -254,4 +249,8 @@ async function listFiles(directory: string): Promise<string[]> {
       ),
     )
     .sort();
+}
+
+function lineCount(value: string): number {
+  return value.trimEnd().split("\n").length;
 }

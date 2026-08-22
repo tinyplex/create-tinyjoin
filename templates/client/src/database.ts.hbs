@@ -1,0 +1,29 @@
+import {create} from 'tinygres';
+
+export type Todo = {
+  id: string;
+  title: string;
+  done: boolean;
+};
+
+export type Database = Awaited<ReturnType<typeof create>>;
+
+export async function openDatabase(): Promise<Database> {
+  const database = await create(
+    {{#if usesOpfs}}
+    'opfs://{{storageName}}',
+    {{else}}
+    'memory://',
+    {{/if}}
+  );
+
+  await database.exec(`
+    CREATE TABLE IF NOT EXISTS todos (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      done BOOLEAN NOT NULL DEFAULT false
+    )
+  `);
+
+  return database;
+}

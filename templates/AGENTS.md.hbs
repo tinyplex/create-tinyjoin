@@ -2,22 +2,14 @@
 
 This is a generated TinyGres TypeScript/Vite starter.
 
-- Work in `client/` and run `npm run dev` there.
-- TinyGres owns its {{#if usesOpfs}}OPFS-backed{{else}}in-memory{{/if}}
-  page-native database and Rust/WASM engine inside a dedicated Worker.
-- Keep the database standalone and local. External services belong in separate
-  application code.
-- Await `create()`, use parameterized `query()` calls, use parameter-free
-  `exec()` scripts, and call `close()` during teardown.
-- Run related schema DDL in one atomic `exec()` bootstrap. Use
-  `transaction(callback)` for related parameterized `INSERT`, `UPDATE`, and
-  `DELETE` work, and keep the transaction object inside its callback.
-- Preserve the three-table many-to-many query, aggregate summary,
-  subscription-driven re-query, and visible revision/error state when changing
-  the demo.
-{{#if usesOpfs}}
-- Preserve the stable `{{storageName}}` OPFS name and idempotent schema/seed
-  setup so reloads do not replace existing data.
-{{/if}}
-- Keep SQL within TinyGres's documented compatibility contract and validate
-  changes with `npm run build`.
+- Run the app from this directory with `npm run dev`.
+- Keep database setup in `src/database.ts` and application UI in `src/main.ts`.
+- Keep schema setup safe to run again when the app reloads.
+- Use TinyGres's `sql` tagged template or parameter arrays for application
+  values. Do not concatenate user input into SQL.
+- Generate stable row identifiers in application code.
+- Keep the database client open while the app is running and close it during
+  page teardown.
+- Validate changes with `npm run build`.
+
+Current TinyGres documentation: https://tinygres.org
