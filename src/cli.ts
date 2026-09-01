@@ -17,7 +17,7 @@ const STORAGE_OPTIONS = [
 ] as const;
 
 const optionCatalog = {
-  command: "npm create tinygres@latest --",
+  command: "npm create tinyjoin@latest --",
   nonInteractiveFlag: "--non-interactive",
   options: {
     projectName: { type: "string", required: true },
@@ -35,14 +35,14 @@ const optionCatalog = {
 };
 
 if (args.includes("--help") || args.includes("-h")) {
-  console.log(`create-tinygres
+  console.log(`create-tinyjoin
 
-Interactively scaffold a TinyGres application:
-  npm create tinygres@latest
+Interactively scaffold a TinyJoin application:
+  npm create tinyjoin@latest
 
 Run non-interactively:
-  npm create tinygres@latest -- --non-interactive \\
-    --projectName my-tinygres-app --storage opfs \\
+  npm create tinyjoin@latest -- --non-interactive \\
+    --projectName my-tinyjoin-app --storage opfs \\
     --installAndRun false
 
 Agent and automation commands:
@@ -57,13 +57,13 @@ if (args.includes("--list-options")) {
 }
 
 const config = {
-  welcomeMessage: "🎉 Welcome to TinyGres!\n",
+  welcomeMessage: "🎉 Welcome to TinyJoin!\n",
   questions: [
     {
       type: "text" as const,
       name: "projectName",
       message: "Project name:",
-      initial: "my-tinygres-app",
+      initial: "my-tinyjoin-app",
       validate: validateProjectName,
     },
     {
@@ -99,7 +99,7 @@ const config = {
       storage,
       usesOpfs: storage === "opfs",
       storageName: createStorageName(projectName),
-      tinygresDependency: process.env.CREATE_TINYGRES_DEPENDENCY ?? "^0.0.5",
+      tinyjoinDependency: process.env.CREATE_TINYJOIN_DEPENDENCY ?? "^0.0.5",
     };
   },
   getFiles: () => [
@@ -192,7 +192,7 @@ function createStorageName(projectName: string): string {
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "") || "app";
-  const prefix = "tinygres-";
+  const prefix = "tinyjoin-";
   const suffix = "-db-v1";
   return `${prefix}${slug.slice(0, 64 - prefix.length - suffix.length)}${suffix}`;
 }

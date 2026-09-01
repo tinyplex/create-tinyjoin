@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 
 export const generatedTestRoot = resolve(
   tmpdir(),
-  "create-tinygres-generated-test",
+  "create-tinyjoin-generated-test",
 );
 
 export const generatedSavedApp = resolve(generatedTestRoot, "app");

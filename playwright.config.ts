@@ -8,7 +8,7 @@ const demoPort = 4174;
 export default defineConfig({
   testDir: "./test/e2e",
   fullyParallel: false,
-  outputDir: resolve(tmpdir(), "create-tinygres-playwright-results"),
+  outputDir: resolve(tmpdir(), "create-tinyjoin-playwright-results"),
   globalTeardown: "./test/e2e/global-teardown.ts",
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,

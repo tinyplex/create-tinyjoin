@@ -1,13 +1,13 @@
 {
-  "name": "create-tinygres",
+  "name": "create-tinyjoin",
   "version": "0.0.5",
   "author": "jamesgpearce",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/tinyplex/create-tinygres.git"
+    "url": "git+https://github.com/tinyplex/create-tinyjoin.git"
   },
   "license": "MIT",
-  "description": "Scaffold a standalone TinyGres browser database application.",
+  "description": "Scaffold a standalone TinyJoin browser database application.",
   "keywords": [
     "postgresql",
     "local-first",
@@ -19,7 +19,7 @@
   "private": true,
   "type": "module",
   "bin": {
-    "create-tinygres": "./cli.js"
+    "create-tinyjoin": "./cli.js"
   },
   "scripts": {
     "build": "node build.js",

@@ -11,20 +11,20 @@ import {
 } from "./paths.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const tinygresRoot = resolve(root, "../tinygres");
+const tinyjoinRoot = resolve(root, "../tinyjoin");
 const output = generatedTestRoot;
 const npm = process.platform === "win32" ? "npm.cmd" : "npm";
-let tinygresDependency: string;
+let tinyjoinDependency: string;
 
 beforeAll(async () => {
   await rm(output, { force: true, recursive: true });
   await mkdir(output, { recursive: true });
-  tinygresDependency =
-    process.env.CREATE_TINYGRES_DEPENDENCY ?? (await packSiblingTinygres());
+  tinyjoinDependency =
+    process.env.CREATE_TINYJOIN_DEPENDENCY ?? (await packSiblingTinyJoin());
 });
 
 describe.sequential("generated apps", () => {
-  it("builds saved and fresh todo starters against current TinyGres", async () => {
+  it("builds saved and fresh todo starters against current TinyJoin", async () => {
     generate("app", "opfs");
     generate("fresh-app", "memory");
 
@@ -36,7 +36,7 @@ describe.sequential("generated apps", () => {
       resolve(generatedSavedApp, "src/main.ts"),
       "utf8",
     );
-    expect(database).toContain("await create('opfs://tinygres-app-db-v1')");
+    expect(database).toContain("await create('opfs://tinyjoin-app-db-v1')");
     expect(database).toContain("CREATE TABLE IF NOT EXISTS todos");
     expect(source).toContain("crypto.randomUUID()");
     expect(source).toContain("INSERT INTO todos");
@@ -45,7 +45,7 @@ describe.sequential("generated apps", () => {
     expect(source).toContain("database.subscribe(");
     expect(source).toContain("database.close()");
     expect(source).not.toMatch(
-      /__tinygresDemo|performance\.now|JOIN|GROUP BY|revision|invalidation|latency|benchmark|transaction\(/i,
+      /__tinyjoinDemo|performance\.now|JOIN|GROUP BY|revision|invalidation|latency|benchmark|transaction\(/i,
     );
 
     const freshDatabase = await readFile(
@@ -73,7 +73,7 @@ function generate(projectName: string, storage: "memory" | "opfs"): void {
       "false",
     ],
     output,
-    { CREATE_TINYGRES_DEPENDENCY: tinygresDependency },
+    { CREATE_TINYJOIN_DEPENDENCY: tinyjoinDependency },
   );
 }
 
@@ -81,17 +81,17 @@ async function installBuildAndCheck(app: string): Promise<void> {
   const manifest = JSON.parse(
     await readFile(resolve(app, "package.json"), "utf8"),
   );
-  expect(manifest.dependencies.tinygres).toBe(tinygresDependency);
+  expect(manifest.dependencies.tinyjoin).toBe(tinyjoinDependency);
 
   run(npm, ["install", "--no-audit", "--no-fund"], app);
   expect(
-    (await lstat(resolve(app, "node_modules/tinygres"))).isSymbolicLink(),
+    (await lstat(resolve(app, "node_modules/tinyjoin"))).isSymbolicLink(),
   ).toBe(false);
   const installedManifest = JSON.parse(
-    await readFile(resolve(app, "node_modules/tinygres/package.json"), "utf8"),
+    await readFile(resolve(app, "node_modules/tinyjoin/package.json"), "utf8"),
   );
   expect(installedManifest).toMatchObject({
-    name: "tinygres",
+    name: "tinyjoin",
     version: "0.0.5",
   });
 
@@ -101,14 +101,14 @@ async function installBuildAndCheck(app: string): Promise<void> {
   expect(assets.some((file) => file.endsWith(".wasm"))).toBe(true);
 }
 
-async function packSiblingTinygres(): Promise<string> {
-  if (!existsSync(resolve(tinygresRoot, "package.json"))) {
+async function packSiblingTinyJoin(): Promise<string> {
+  if (!existsSync(resolve(tinyjoinRoot, "package.json"))) {
     throw new Error(
-      "Set CREATE_TINYGRES_DEPENDENCY to a packed TinyGres 0.0.5 package, or check out TinyGres beside create-tinygres.",
+      "Set CREATE_TINYJOIN_DEPENDENCY to a packed TinyJoin 0.0.5 package, or check out TinyJoin beside create-tinyjoin.",
     );
   }
 
-  run(npm, ["run", "build"], tinygresRoot);
+  run(npm, ["run", "build"], tinyjoinRoot);
   const packages = resolve(output, "packages");
   await mkdir(packages, { recursive: true });
   const packed = JSON.parse(
@@ -122,7 +122,7 @@ async function packSiblingTinygres(): Promise<string> {
         "--pack-destination",
         packages,
       ],
-      tinygresRoot,
+      tinyjoinRoot,
     ),
   ) as Array<{ filename?: unknown; version?: unknown }>;
   const packageResult = packed[0];
@@ -130,7 +130,7 @@ async function packSiblingTinygres(): Promise<string> {
     packageResult?.version !== "0.0.5" ||
     typeof packageResult.filename !== "string"
   ) {
-    throw new Error("Sibling TinyGres must pack as version 0.0.5");
+    throw new Error("Sibling TinyJoin must pack as version 0.0.5");
   }
   return pathToFileURL(resolve(packages, packageResult.filename)).href;
 }

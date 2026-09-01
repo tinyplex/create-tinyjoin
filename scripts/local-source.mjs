@@ -5,19 +5,19 @@ import {dirname, resolve} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const tinygresRoot = resolve(root, '../tinygres');
+const tinyjoinRoot = resolve(root, '../tinyjoin');
 const invocationRoot = resolve(process.env.INIT_CWD ?? process.cwd());
 const cache = resolve(
   root,
-  'node_modules/.cache/create-tinygres/local-package',
+  'node_modules/.cache/create-tinyjoin/local-package',
 );
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 
-if (!existsSync(resolve(tinygresRoot, 'package.json'))) {
-  throw new Error(`Expected a sibling TinyGres repository at ${tinygresRoot}`);
+if (!existsSync(resolve(tinyjoinRoot, 'package.json'))) {
+  throw new Error(`Expected a sibling TinyJoin repository at ${tinyjoinRoot}`);
 }
 
-run(npm, ['run', 'build'], tinygresRoot, 'inherit');
+run(npm, ['run', 'build'], tinyjoinRoot, 'inherit');
 run(npm, ['run', 'build'], root, 'inherit');
 
 await rm(cache, {force: true, recursive: true});
@@ -34,27 +34,27 @@ const [packed] = JSON.parse(
       '--pack-destination',
       cache,
     ],
-    tinygresRoot,
+    tinyjoinRoot,
     'pipe',
   ),
 );
 
 if (!packed || typeof packed.filename !== 'string') {
-  throw new Error('npm pack did not report a TinyGres tarball');
+  throw new Error('npm pack did not report a TinyJoin tarball');
 }
 
 const tarball = resolve(cache, packed.filename);
 if (!existsSync(tarball)) {
   throw new Error(`npm pack did not create ${tarball}`);
 }
-console.log(`Using local TinyGres package ${tarball}\n`);
+console.log(`Using local TinyJoin package ${tarball}\n`);
 
 run(
   process.execPath,
   [resolve(root, 'dist/cli.js'), ...process.argv.slice(2)],
   invocationRoot,
   'inherit',
-  {CREATE_TINYGRES_DEPENDENCY: pathToFileURL(tarball).href},
+  {CREATE_TINYJOIN_DEPENDENCY: pathToFileURL(tarball).href},
 );
 
 function run(command, args, cwd, stdio, environment = {}) {

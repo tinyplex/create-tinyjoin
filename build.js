@@ -26,6 +26,6 @@ const manifest = JSON.parse(await readFile('package.json', 'utf8'));
 delete manifest.private;
 delete manifest.scripts;
 delete manifest.devDependencies;
-manifest.bin['create-tinygres'] = 'cli.js';
+manifest.bin['create-tinyjoin'] = 'cli.js';
 manifest.files = ['cli.js', 'templates', 'README.md', 'LICENSE'];
 await writeFile('dist/package.json', `${JSON.stringify(manifest, null, 2)}\n`);

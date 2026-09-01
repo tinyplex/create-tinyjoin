@@ -1,9 +1,9 @@
-# create-tinygres
+# create-tinyjoin
 
-Scaffold a small local todo app with TinyGres, TypeScript, and Vite:
+Scaffold a small local todo app with TinyJoin, TypeScript, and Vite:
 
 ```sh
-npm create tinygres@latest
+npm create tinyjoin@latest
 ```
 
 The generated project is ready to run at its root and needs no database server,
@@ -13,8 +13,8 @@ start fresh each time.
 For agents and CI, every option can be supplied non-interactively:
 
 ```sh
-npm create tinygres@latest -- --non-interactive \
-  --projectName my-tinygres-app \
+npm create tinyjoin@latest -- --non-interactive \
+  --projectName my-tinyjoin-app \
   --storage opfs \
   --installAndRun false
 ```
@@ -23,7 +23,7 @@ Use `--list-options` for the machine-readable option catalog or `--help` for
 usage.
 
 This repository is a private development package. `npm run build` assembles the
-publishable `create-tinygres` package under `dist/`.
+publishable `create-tinyjoin` package under `dist/`.
 
 ## Development
 
@@ -37,17 +37,17 @@ npm run test:e2e        # real generated-app behavior in Chromium
 Run the local generator from this repository's parent directory with:
 
 ```sh
-npm --prefix create-tinygres run local
+npm --prefix create-tinyjoin run local
 ```
 
 This builds only the generator. The generated app installs the published
-TinyGres package, so its native build toolchain is not required.
+TinyJoin package, so its native build toolchain is not required.
 
-To test unpublished changes from a neighboring TinyGres source repository, use:
+To test unpublished changes from a neighboring TinyJoin source repository, use:
 
 ```sh
-npm --prefix create-tinygres run local:source
+npm --prefix create-tinyjoin run local:source
 ```
 
-That command builds and packs the sibling TinyGres repository before starting
+That command builds and packs the sibling TinyJoin repository before starting
 the generator.

@@ -10,18 +10,18 @@ const cli = resolve(root, "dist/cli.js");
 let output: string;
 
 beforeEach(async () => {
-  output = await mkdtemp(join(tmpdir(), "create-tinygres-cli-"));
+  output = await mkdtemp(join(tmpdir(), "create-tinyjoin-cli-"));
 });
 
 afterEach(async () => {
   await rm(output, { force: true, recursive: true });
 });
 
-describe("create-tinygres CLI", () => {
+describe("create-tinyjoin CLI", () => {
   it("documents its automation surface", () => {
     const help = run(["--help"]);
-    expect(help.stdout).toContain("TinyGres");
-    expect(help.stdout).toContain("npm create tinygres@latest");
+    expect(help.stdout).toContain("TinyJoin");
+    expect(help.stdout).toContain("npm create tinyjoin@latest");
     expect(help.stdout).toContain("--non-interactive");
     expect(help.stdout).toContain("--storage opfs");
 
@@ -52,7 +52,7 @@ describe("create-tinygres CLI", () => {
         "--installAndRun",
         "false",
       ],
-      { CREATE_TINYGRES_DEPENDENCY: "9.9.9-test" },
+      { CREATE_TINYJOIN_DEPENDENCY: "9.9.9-test" },
     );
 
     const project = resolve(output, "example");
@@ -74,7 +74,7 @@ describe("create-tinygres CLI", () => {
     expect(manifest).toMatchObject({
       name: "example",
       private: true,
-      dependencies: { tinygres: "9.9.9-test" },
+      dependencies: { tinyjoin: "9.9.9-test" },
     });
 
     const html = await readFile(resolve(project, "index.html"), "utf8");
@@ -99,7 +99,7 @@ describe("create-tinygres CLI", () => {
       /worker|wasm|opfs|revision|invalidation|latency|benchmark/i,
     );
 
-    expect(database).toContain("from 'tinygres'");
+    expect(database).toContain("from 'tinyjoin'");
     expect(database).toContain("await create('memory://')");
     expect(database).toContain("CREATE TABLE IF NOT EXISTS todos");
     expect(database.match(/CREATE TABLE/g)).toHaveLength(1);
@@ -110,7 +110,7 @@ describe("create-tinygres CLI", () => {
     expect(source).toContain("database.subscribe(");
     expect(source).toContain("database.close()");
     expect(source).not.toMatch(
-      /__tinygresDemo|performance\.now|JOIN|GROUP BY|revision|invalidation|latency|benchmark|transaction\(/i,
+      /__tinyjoinDemo|performance\.now|JOIN|GROUP BY|revision|invalidation|latency|benchmark|transaction\(/i,
     );
 
     expect(lineCount(html)).toBeLessThanOrEqual(60);
@@ -136,7 +136,7 @@ describe("create-tinygres CLI", () => {
         "--installAndRun",
         "false",
       ],
-      { CREATE_TINYGRES_DEPENDENCY: "9.9.9-test" },
+      { CREATE_TINYJOIN_DEPENDENCY: "9.9.9-test" },
     );
 
     const project = resolve(output, "saved-app");
@@ -148,7 +148,7 @@ describe("create-tinygres CLI", () => {
     const readme = await readFile(resolve(project, "README.md"), "utf8");
 
     expect(database).toContain(
-      "await create('opfs://tinygres-saved-app-db-v1')",
+      "await create('opfs://tinyjoin-saved-app-db-v1')",
     );
     expect(html).toContain("saved locally in this browser");
     expect(readme).toContain("remain after a reload");
@@ -175,7 +175,7 @@ describe("create-tinygres CLI", () => {
     );
   });
 
-  it("targets the published TinyGres release by default", async () => {
+  it("targets the published TinyJoin release by default", async () => {
     run([
       "--non-interactive",
       "--projectName",
@@ -187,7 +187,7 @@ describe("create-tinygres CLI", () => {
     const manifest = JSON.parse(
       await readFile(resolve(output, "published/package.json"), "utf8"),
     );
-    expect(manifest.dependencies.tinygres).toBe("^0.0.5");
+    expect(manifest.dependencies.tinyjoin).toBe("^0.0.5");
   });
 
   it("rejects path-like and existing project names", async () => {
@@ -213,8 +213,8 @@ describe("create-tinygres CLI", () => {
     expect(manifest.private).toBeUndefined();
     expect(manifest.scripts).toBeUndefined();
     expect(manifest.devDependencies).toBeUndefined();
-    expect(manifest.description).toContain("TinyGres");
-    expect(manifest.bin).toEqual({ "create-tinygres": "cli.js" });
+    expect(manifest.description).toContain("TinyJoin");
+    expect(manifest.bin).toEqual({ "create-tinyjoin": "cli.js" });
     expect(manifest.files).toContain("templates");
   });
 });
