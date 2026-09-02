@@ -74,6 +74,7 @@ describe("create-tinyjoin CLI", () => {
     expect(manifest).toMatchObject({
       name: "example",
       private: true,
+      engines: { node: "^20.19.0 || >=22.12.0" },
       dependencies: { tinyjoin: "9.9.9-test" },
     });
 
@@ -214,6 +215,13 @@ describe("create-tinyjoin CLI", () => {
     expect(manifest.scripts).toBeUndefined();
     expect(manifest.devDependencies).toBeUndefined();
     expect(manifest.description).toContain("TinyJoin");
+    expect(manifest.homepage).toBe("https://tinyjoin.org");
+    expect(manifest.bugs).toEqual({
+      url: "https://github.com/tinyplex/create-tinyjoin/issues",
+    });
+    expect(manifest.engines).toEqual({
+      node: "^20.19.0 || >=22.12.0",
+    });
     expect(manifest.bin).toEqual({ "create-tinyjoin": "cli.js" });
     expect(manifest.files).toContain("templates");
   });

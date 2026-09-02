@@ -22,8 +22,8 @@ npm create tinyjoin@latest -- --non-interactive \
 Use `--list-options` for the machine-readable option catalog or `--help` for
 usage.
 
-This repository is a private development package. `npm run build` assembles the
-publishable `create-tinyjoin` package under `dist/`.
+`npm run build` assembles the publishable `create-tinyjoin` package under
+`dist/`.
 
 ## Development
 
