@@ -30,7 +30,7 @@ usage.
 ```sh
 npm run typecheck       # generator and test TypeScript
 npm test                # CLI, template, and package-boundary tests
-npm run test:generated  # build generated persistent and temporary apps
+npm run test:generated  # generated apps against published TinyJoin
 npm run test:e2e        # real generated-app behavior in Chromium
 ```
 
