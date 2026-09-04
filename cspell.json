@@ -1,0 +1,22 @@
+{
+  "version": "0.2",
+  "ignorePaths": [
+    "node_modules/**",
+    "dist/**",
+    "package-lock.json",
+    "screenshots/**",
+    "test/__snapshots__/**",
+    "**/*.svg"
+  ],
+  "words": [
+    "indexeddb",
+    "jamesgpearce",
+    "opfs",
+    "tinybase",
+    "tinycreate",
+    "tinyjoin",
+    "tinyplex"
+  ],
+  "ignoreWords": [],
+  "import": []
+}

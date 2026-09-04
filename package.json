@@ -29,11 +29,12 @@
     "build": "node build.js",
     "local": "node scripts/local.mjs",
     "local:source": "node scripts/local-source.mjs",
+    "spell": "cspell --no-progress \"*.{md,json,js,mjs,ts}\" \"src/**\" \"test/**\" \"templates/**\" \"scripts/**\"",
     "typecheck": "tsc --noEmit",
     "test": "npm run build && vitest run test/cli.test.ts",
     "test:generated": "npm run build && vitest run test/generated-app.test.ts",
     "test:e2e": "npm run test:generated && playwright test",
-    "prePublishPackage": "npm i && npm run typecheck && npm test && npm run test:e2e",
+    "prePublishPackage": "npm i && npm run spell && npm run typecheck && npm test && npm run test:e2e",
     "publishPackage": "npm run prePublishPackage && npm publish ./dist"
   },
   "dependencies": {
@@ -45,6 +46,7 @@
   "devDependencies": {
     "@playwright/test": "^1.62.1",
     "@types/node": "^26.2.0",
+    "cspell": "^10.2.1",
     "esbuild": "^0.28.1",
     "typescript": "^7.0.2",
     "vitest": "^4.1.10"

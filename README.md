@@ -66,11 +66,15 @@ post-processing. A JavaScript project also drops `tsconfig.json`, the
 ## Development
 
 ```sh
+npm run spell           # cspell over the sources, templates, and docs
 npm run typecheck       # generator and test TypeScript
 npm test                # CLI, template, snapshot, and package-boundary tests
 npm run test:generated  # generated apps against published TinyJoin
 npm run test:e2e        # real generated-app behavior in Chromium
 ```
+
+`npm run publishPackage` runs all of the above before publishing. Add project
+vocabulary to `cspell.json` rather than disabling the check.
 
 `npm test` compares every generated file, for both languages and both storage
 modes, against the snapshots in `test/__snapshots__`. Run
