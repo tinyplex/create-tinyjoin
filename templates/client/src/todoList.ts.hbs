@@ -1,0 +1,38 @@
+import './todoList.css';
+import {type TodosDatabase, type TodoRow} from './database';
+import {createTodoItem} from './todoItem';
+
+export const createTodoList = (database: TodosDatabase): HTMLDivElement => {
+  const list = document.createElement('div');
+  list.id = 'todoList';
+
+  const render = async () => {
+    const {rows} = await database.query<TodoRow>(
+      'SELECT id, text, completed, created FROM todos ORDER BY created, id',
+    );
+
+    list.innerHTML = '';
+    rows.forEach((todo) => {
+      const item = createTodoItem(
+        todo.id,
+        todo.text,
+        todo.completed,
+        () => {
+          void database.query('UPDATE todos SET completed = $1 WHERE id = $2', [
+            !todo.completed,
+            todo.id,
+          ]);
+        },
+        () => {
+          void database.query('DELETE FROM todos WHERE id = $1', [todo.id]);
+        },
+      );
+      list.appendChild(item);
+    });
+  };
+
+  database.subscribe({tables: ['todos']}, () => void render());
+  void render();
+
+  return list;
+};

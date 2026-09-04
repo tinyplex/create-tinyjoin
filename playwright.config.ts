@@ -1,9 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-import { generatedSavedApp } from "./test/paths.js";
-
-const demoPort = 4174;
+import { e2eApps } from "./test/paths.js";
 
 export default defineConfig({
   testDir: "./test/e2e",
@@ -14,7 +12,6 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? "github" : "list",
   use: {
-    baseURL: `http://127.0.0.1:${demoPort}`,
     trace: "on-first-retry",
   },
   projects: [
@@ -23,10 +20,10 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
     },
   ],
-  webServer: {
-    command: `npm --prefix ${JSON.stringify(generatedSavedApp)} run dev -- --host 127.0.0.1 --port ${demoPort} --strictPort`,
-    url: `http://127.0.0.1:${demoPort}`,
+  webServer: e2eApps.map(({ path, port }) => ({
+    command: `npm --prefix ${JSON.stringify(path)} run dev -- --host 127.0.0.1 --port ${port} --strictPort`,
+    url: `http://127.0.0.1:${port}`,
     reuseExistingServer: !process.env.CI,
     timeout: 30_000,
-  },
+  })),
 });

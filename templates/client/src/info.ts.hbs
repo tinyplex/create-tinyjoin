@@ -1,0 +1,42 @@
+import './info.css';
+
+export const createInfo = (): HTMLDivElement => {
+  const container = document.createElement('div');
+  container.id = 'info';
+
+  const tech = document.createElement('div');
+  tech.id = 'infoTech';
+  container.appendChild(tech);
+
+{{#if typescript}}
+  addIcon(tech, '/ts.svg', 'Written in TypeScript');
+{{else}}
+  addIcon(tech, '/js.svg', 'Written in JavaScript');
+{{/if}}
+
+  const infoIcon = document.createElement('div');
+  infoIcon.id = 'infoIcon';
+  infoIcon.textContent = 'i';
+
+  const tooltip = document.createElement('div');
+  tooltip.id = 'infoTooltip';
+  tooltip.textContent = `A simple todo list application demonstrating TinyJoin's relational queries with CRUD operations.`;
+
+  infoIcon.appendChild(tooltip);
+  container.appendChild(infoIcon);
+
+  return container;
+};
+
+const addIcon = (
+  container: HTMLElement,
+  src: string,
+  title: string,
+): HTMLImageElement => {
+  const icon = document.createElement('img');
+  icon.src = src;
+  icon.className = 'infoTechIcon';
+  icon.title = title;
+  container.appendChild(icon);
+  return icon;
+};

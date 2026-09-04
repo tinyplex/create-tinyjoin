@@ -1,0 +1,13 @@
+import './topBar.css';
+import {createTitle} from './title';
+import {createInfo} from './info';
+
+export const createTopBar = (): HTMLDivElement => {
+  const topBar = document.createElement('div');
+  topBar.id = 'topBar';
+
+  topBar.appendChild(createTitle());
+  topBar.appendChild(createInfo());
+
+  return topBar;
+};

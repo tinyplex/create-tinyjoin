@@ -1,0 +1,16 @@
+import './title.css';
+
+export const createTitle = (): HTMLHeadingElement => {
+  const title = document.createElement('h1');
+  title.id = 'topBarTitle';
+
+  const logo = document.createElement('img');
+  logo.src = '/favicon.svg';
+  logo.id = 'topBarLogo';
+  logo.alt = 'TinyJoin';
+  title.appendChild(logo);
+
+  title.append(`TinyJoin Todos`);
+
+  return title;
+};

@@ -1,0 +1,19 @@
+import './button.css';
+
+export const createButton = (
+  text: string,
+  onClick: (() => void) | null,
+  variant: 'default' | 'primary' = 'default',
+  type: 'button' | 'submit' = 'button',
+): HTMLButtonElement => {
+  const button = document.createElement('button');
+  button.textContent = text;
+  button.type = type;
+  if (variant === 'primary') {
+    button.className = 'primary';
+  }
+  if (onClick) {
+    button.addEventListener('click', onClick);
+  }
+  return button;
+};

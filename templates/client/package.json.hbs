@@ -8,14 +8,16 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "{{#if typescript}}tsc --noEmit && {{/if}}vite build",
     "preview": "vite preview"
   },
   "dependencies": {
     "tinyjoin": "{{tinyjoinDependency}}"
   },
   "devDependencies": {
+{{#if typescript}}
     "typescript": "^7.0.2",
+{{/if}}
     "vite": "^8.2.1"
   }
 }

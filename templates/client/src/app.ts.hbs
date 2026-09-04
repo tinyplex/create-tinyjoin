@@ -1,0 +1,28 @@
+import {databaseReady} from './database';
+import {createTopBar} from './topBar';
+import {showLoading, hideLoading} from './loading';
+import {createTodoInput} from './todoInput';
+import {createTodoList} from './todoList';
+
+export const app = async (root: HTMLElement) => {
+  const appElement = document.createElement('div');
+  appElement.id = 'app';
+  root.replaceChildren(createTopBar(), appElement);
+
+  // Show loading spinner
+  const loadingDiv = showLoading(appElement);
+
+  // Wait for the database to be ready
+  const database = await databaseReady;
+
+  // Remove loading spinner
+  hideLoading(loadingDiv);
+
+  const todoInputContainer = createTodoInput(database);
+  appElement.appendChild(todoInputContainer);
+
+  const input = todoInputContainer.querySelector('input')!;
+  input.focus();
+
+  appElement.appendChild(createTodoList(database));
+};

@@ -1,0 +1,15 @@
+#todoList {
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  overflow: hidden;
+  background: var(--bg2);
+  width: 100%;
+}
+
+#todoList:empty::before {
+  content: 'No todos yet. Add one above!';
+  display: block;
+  padding: 2rem;
+  text-align: center;
+  color: var(--fg2);
+}

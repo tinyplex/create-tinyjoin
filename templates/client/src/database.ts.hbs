@@ -1,29 +1,56 @@
-import {create} from 'tinyjoin';
+import {create, type Client} from 'tinyjoin';
 
-export type Todo = {
+export type TodoRow = {
   id: string;
-  title: string;
-  done: boolean;
+  text: string;
+  completed: boolean;
+  created: number;
 };
 
-export type Database = Awaited<ReturnType<typeof create>>;
+export type TodosDatabase = Client;
 
-export async function openDatabase(): Promise<Database> {
-  const database = await create(
-    {{#if usesOpfs}}
-    'opfs://{{storageName}}',
-    {{else}}
-    'memory://',
-    {{/if}}
-  );
+{{#if usesOpfs}}
+export const DATA_DIR = 'opfs://{{storageName}}';
+{{else}}
+export const DATA_DIR = 'memory://';
+{{/if}}
 
-  await database.exec(`
-    CREATE TABLE IF NOT EXISTS todos (
-      id TEXT PRIMARY KEY,
-      title TEXT NOT NULL,
-      done BOOLEAN NOT NULL DEFAULT false
-    )
-  `);
+export const createTodosDatabase = async (): Promise<TodosDatabase> => {
+  const database = await create(DATA_DIR);
+
+  // Create the table, and add the starter todos, only on the first visit.
+  if (!(await hasTodosTable(database))) {
+    await database.exec(`
+      CREATE TABLE IF NOT EXISTS todos (
+        id TEXT PRIMARY KEY,
+        text TEXT NOT NULL,
+        completed BOOLEAN NOT NULL DEFAULT false,
+        created INTEGER NOT NULL DEFAULT 0
+      )
+    `);
+    await database.query(
+      `INSERT INTO todos (id, text, completed, created)
+       VALUES ($1, $2, $3, $4), ($5, $6, $7, $8)`,
+      ['1', 'Learn TinyJoin', false, 1, '2', 'Build an app', false, 2],
+    );
+  }
 
   return database;
-}
+};
+
+const hasTodosTable = async (database: TodosDatabase): Promise<boolean> => {
+  try {
+    await database.query('SELECT id FROM todos LIMIT 1');
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+export const databaseReady = createTodosDatabase();
+
+addEventListener(
+  'pagehide',
+  () => void databaseReady.then((database) => database.close()),
+  {once: true},
+);

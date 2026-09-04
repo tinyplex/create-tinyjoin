@@ -1,29 +1,54 @@
 # {{projectName}}
 
-A small local todo app built with TinyJoin, TypeScript, and Vite.
+A TinyJoin todo app built with {{#if typescript}}TypeScript{{else}}JavaScript{{/if}} and Vanilla JS.
 
-## Start it
+## Getting Started
 
-```sh
+To start the web client with Vite, run the following commands:
+
+```bash
 npm install
 npm run dev
 ```
 
-Your app will open at the address Vite prints in the terminal. It needs no
-database server, account, or credentials.
+PNPM, Yarn, and Bun should also work. Your app will be available at
+`http://localhost:5173`, or whichever port Vite specifies in the console. It
+needs no database server, account, or credentials.
+
+After that, start hacking!
+
+## Structure
+
+This project is a single web application, built with Vite and
+{{#if typescript}}TypeScript{{else}}JavaScript{{/if}}.
+
+### Key Files
+
+- **`index.html`**: The main HTML file that loads your app
+- **`src/index.{{ext}}`**: Entry point that bootstraps the app
+- **`src/app.{{ext}}`**: Main application logic
+- **`src/database.{{ext}}`**: TinyJoin database and `todos` table setup
+- **`src/todoInput.{{ext}}`**, **`src/todoList.{{ext}}`**,
+  **`src/todoItem.{{ext}}`**: The todo interface
+- **`src/topBar.{{ext}}`**, **`src/button.{{ext}}`**, **`src/input.{{ext}}`**,
+  **`src/loading.{{ext}}`**: Shared interface pieces
+
+#### How It Works
+
+The app uses **TinyJoin** to keep application state in a small relational
+database that runs entirely in the browser. The interface reads rows with
+ordinary SQL queries, writes them with parameterized statements, and subscribes
+to the `todos` table so that every change re-renders the list.
 
 {{#if usesOpfs}}
-Todos are saved locally in this browser and remain after a reload.
+**Persistence** is enabled. Your data is automatically saved and restored when
+you reload the page.
 {{else}}
-Todos are kept for the current visit and start fresh after a reload.
+**Persistence** is not enabled. Your todos are kept for the current visit and
+start fresh after a reload.
 {{/if}}
 
-## Start editing
+## Learn More
 
-- `src/database.ts` opens the database and defines the `todos` table.
-- `src/main.ts` contains the todo UI and its queries.
-- `src/style.css` contains the app styles.
-
-Run `npm run build` to check the TypeScript and create a production build.
-
-Learn more at [tinyjoin.org](https://tinyjoin.org).
+- [TinyJoin Documentation](https://tinyjoin.org)
+- [TinyJoin Demos](https://tinyjoin.org/demos/)

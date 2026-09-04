@@ -5,11 +5,18 @@ import { fileURLToPath } from "node:url";
 import {
   createCLI,
   detectPackageManager,
+  type FileConfig,
   type ProjectConfig,
+  type TemplateContext,
 } from "tinycreate";
 
 const templateRoot = join(dirname(fileURLToPath(import.meta.url)), "templates");
 const args = process.argv.slice(2);
+
+const LANGUAGES = [
+  { title: "TypeScript", value: "typescript" },
+  { title: "JavaScript", value: "javascript" },
+] as const;
 
 const STORAGE_OPTIONS = [
   { title: "Save data across reloads (recommended)", value: "opfs" },
@@ -21,6 +28,11 @@ const optionCatalog = {
   nonInteractiveFlag: "--non-interactive",
   options: {
     projectName: { type: "string", required: true },
+    language: {
+      values: LANGUAGES.map(({ value }) => value),
+      required: true,
+      default: "typescript",
+    },
     storage: {
       values: STORAGE_OPTIONS.map(({ value }) => value),
       required: true,
@@ -42,7 +54,7 @@ Interactively scaffold a TinyJoin application:
 
 Run non-interactively:
   npm create tinyjoin@latest -- --non-interactive \\
-    --projectName my-tinyjoin-app --storage opfs \\
+    --projectName my-tinyjoin-app --language typescript --storage opfs \\
     --installAndRun false
 
 Agent and automation commands:
@@ -68,6 +80,13 @@ const config = {
     },
     {
       type: "select" as const,
+      name: "language",
+      message: "Language:",
+      choices: [...LANGUAGES],
+      initial: 0,
+    },
+    {
+      type: "select" as const,
       name: "storage",
       message: "Todo data:",
       choices: [...STORAGE_OPTIONS],
@@ -86,60 +105,103 @@ const config = {
     if (validation !== true) {
       throw new TypeError(validation);
     }
+    const language = normalizeChoice(
+      answers.language === 0 ? "typescript" : (answers.language ?? "typescript"),
+      "language",
+      ["typescript", "javascript"],
+    );
     const storage = normalizeChoice(
       answers.storage === 0 ? "opfs" : (answers.storage ?? "opfs"),
       "storage",
       ["opfs", "memory"],
     );
+    const typescript = language === "typescript";
 
     return {
       projectName,
       installAndRun:
         answers.installAndRun === true || answers.installAndRun === "true",
+      language,
+      typescript,
+      javascript: !typescript,
+      scriptExt: typescript ? "ts" : "js",
+      ext: typescript ? "ts" : "js",
       storage,
       usesOpfs: storage === "opfs",
       storageName: createStorageName(projectName),
       tinyjoinDependency: process.env.CREATE_TINYJOIN_DEPENDENCY ?? "^0.0.5",
     };
   },
-  getFiles: () => [
-    { template: "README.md.hbs", output: "README.md", prettier: true },
-    { template: "AGENTS.md.hbs", output: "AGENTS.md", prettier: true },
-    {
-      template: "client/package.json.hbs",
-      output: "package.json",
+  getFiles: (context: TemplateContext): FileConfig[] => {
+    const { ext, typescript } = context;
+    const script = (name: string): FileConfig => ({
+      template: `client/src/${name}.ts.hbs`,
+      output: `src/${name}.${ext}`,
       prettier: true,
-    },
-    {
-      template: "client/.gitignore.hbs",
-      output: ".gitignore",
-    },
-    {
-      template: "client/index.html.hbs",
-      output: "index.html",
+      transpile: !typescript,
+    });
+    const style = (name: string): FileConfig => ({
+      template: `client/src/${name}.css.hbs`,
+      output: `src/${name}.css`,
       prettier: true,
-    },
-    {
-      template: "client/tsconfig.json.hbs",
-      output: "tsconfig.json",
-      prettier: true,
-    },
-    {
-      template: "client/src/database.ts.hbs",
-      output: "src/database.ts",
-      prettier: true,
-    },
-    {
-      template: "client/src/main.ts.hbs",
-      output: "src/main.ts",
-      prettier: true,
-    },
-    {
-      template: "client/src/style.css.hbs",
-      output: "src/style.css",
-      prettier: true,
-    },
-  ],
+    });
+
+    return [
+      { template: "README.md.hbs", output: "README.md", prettier: true },
+      { template: "AGENTS.md.hbs", output: "AGENTS.md", prettier: true },
+      {
+        template: "client/package.json.hbs",
+        output: "package.json",
+        prettier: true,
+      },
+      {
+        template: "client/.gitignore.hbs",
+        output: ".gitignore",
+      },
+      {
+        template: "client/index.html.hbs",
+        output: "index.html",
+        prettier: true,
+      },
+      ...(typescript
+        ? [
+            {
+              template: "client/tsconfig.json.hbs",
+              output: "tsconfig.json",
+              prettier: true,
+            },
+          ]
+        : []),
+      {
+        template: "client/public/favicon.svg",
+        output: "public/favicon.svg",
+      },
+      typescript
+        ? { template: "client/public/ts.svg", output: "public/ts.svg" }
+        : { template: "client/public/js.svg", output: "public/js.svg" },
+      script("index"),
+      script("app"),
+      script("topBar"),
+      style("topBar"),
+      script("title"),
+      style("title"),
+      script("info"),
+      style("info"),
+      script("loading"),
+      style("loading"),
+      script("button"),
+      style("button"),
+      script("input"),
+      style("input"),
+      script("database"),
+      script("todoInput"),
+      style("todoInput"),
+      script("todoList"),
+      style("todoList"),
+      script("todoItem"),
+      style("todoItem"),
+    ];
+  },
   templateRoot,
   installCommand: "{pm} install",
   devCommand: "{pm} run dev",

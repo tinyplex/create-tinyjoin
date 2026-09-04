@@ -1,0 +1,36 @@
+import './todoInput.css';
+import {type TodosDatabase} from './database';
+import {createButton} from './button';
+import {createInput} from './input';
+
+export const createTodoInput = (database: TodosDatabase): HTMLFormElement => {
+  const container = document.createElement('form');
+  container.id = 'todoInput';
+
+  const input = createInput('What needs to be done?');
+
+  const addTodo = () => {
+    const text = input.value.trim();
+    if (text) {
+      void database.query(
+        `INSERT INTO todos (id, text, completed, created)
+         VALUES ($1, $2, $3, $4)`,
+        [crypto.randomUUID(), text, false, Date.now()],
+      );
+      input.value = '';
+      input.focus();
+    }
+  };
+
+  container.addEventListener('submit', (event) => {
+    event.preventDefault();
+    addTodo();
+  });
+
+  const addButton = createButton('Add', null, 'primary', 'submit');
+
+  container.appendChild(input);
+  container.appendChild(addButton);
+
+  return container;
+};
