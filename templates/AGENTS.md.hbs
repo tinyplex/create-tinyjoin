@@ -12,13 +12,12 @@ lifecycle while adapting the application to the user's requirements.
 - **Persistence**: {{#if usesOpfs}}saved in this browser across reloads{{else}}kept for the current visit only{{/if}}
 
 The database client is opened once in `src/database.{{ext}}` and shared through
-the `databaseReady` promise. Keep that single client: opening a second one for
-the same persistent database is rejected.{{#if usesOpfs}} If another tab owns
-the database, startup shows an error; close that tab and use Retry.{{/if}}
+the `databaseReady` promise. Reuse it within the application.{{#if usesOpfs}}
+Tabs share the saved database automatically; keep its name stable.{{/if}}
 
-The schema is created before the first read, and the starter rows are only
-inserted when the table is first created. An existing empty table stays empty.
-Preserve that ordering so a reload does not duplicate or overwrite existing data.
+One atomic script creates the schema and inserts starter rows. Only
+`TABLE_ALREADY_EXISTS` is ignored, so concurrent first visits cannot seed
+twice and an existing empty table stays empty. Preserve this behavior.
 
 Await writes, preserve drafts on failure, and keep errors visible. Retry at
 startup reloads the page to create a fresh client. Do not automatically replay
@@ -32,6 +31,14 @@ reloads it so the app creates a fresh client instead of reusing a closed one.
 - `src/database.{{ext}}` opens the database and defines the `todos` table.
 - `src/app.{{ext}}` contains the main application UI.
 - `src/todoList.{{ext}}` reads the `todos` table and subscribes to its changes.
+- `vite.config.{{ext}}` enables offline production builds with `tinyjoinOffline()`.
+
+The production app caches its complete build after an online visit. Keep the
+offline plugin configured when changing build output. It waits for open tabs
+to close before activating an update; do not force updates into running tabs.
+For an existing service worker, use the plugin's manifest mode and integrate
+its assets there instead of adding a competing registration. Offline caching
+does not migrate a saved schema or synchronize data to a server.
 
 ## Working Method
 
@@ -55,5 +62,9 @@ npm run build
 
 Change data in the running app, reload the page, and confirm the change
 {{#if usesOpfs}}remains{{else}}resets, as this starter was generated without persistence{{/if}}.
+For offline verification, use `npm run preview`, wait for the browser's offline
+copy to finish installing, close the page, disconnect the network, and reopen
+the same URL. Verify loading, edits, and reloads; the development server does
+not install offline support.
 
 Current TinyJoin documentation: https://tinyjoin.org/llms.txt

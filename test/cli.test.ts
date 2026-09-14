@@ -56,6 +56,7 @@ function expectedFiles(language: Language): string[] {
     "README.md",
     "index.html",
     "package.json",
+    `vite.config.${ext}`,
     "public/favicon.svg",
     `public/${icon}`,
     ...SCRIPT_MODULES.map((module) => `src/${module}.${ext}`),
@@ -145,33 +146,42 @@ describe("create-tinyjoin CLI", () => {
         const readme = await read(project, "README.md");
         const agentInstructions = await read(project, "AGENTS.md");
         const database = await read(project, `src/database.${ext}`);
+        const vite = await read(project, `vite.config.${ext}`);
 
         expect(html).toContain("<title>TinyJoin Todos</title>");
         expect(html).toContain("--accent: #7c3aed;");
         expect(html).toContain('<div id="root"></div>');
         expect(html).toContain(`src="/src/index.${ext}"`);
+        expect(html).not.toMatch(/https?:\/\//);
+        expect(vite).toContain("from 'tinyjoin/vite'");
+        expect(vite).toContain("plugins: [tinyjoinOffline()]");
         expect(readme).toMatch(/needs no\s+database server/);
         expect(readme).toContain("start fresh after a reload");
         expect(readme).toContain(`src/database.${ext}`);
         expect(readme).not.toContain("cd client");
         expect(agentInstructions).toContain(`src/database.${ext}`);
         expect(`${html}\n${readme}\n${agentInstructions}`).not.toMatch(
-          /worker|wasm|opfs|revision|invalidation|latency|benchmark/i,
+          /wasm|opfs|revision|invalidation|latency|benchmark/i,
         );
+        expect(readme).toContain("## Offline Use");
+        expect(readme).toContain("npm run preview");
 
         expect(database).toContain("from 'tinyjoin'");
         expect(database).toContain("await create(DATA_DIR)");
         expect(database).toContain("export const DATA_DIR = 'memory://'");
-        expect(database).toContain("CREATE TABLE IF NOT EXISTS todos");
+        expect(database).toContain("CREATE TABLE todos");
+        expect(database).toContain("TABLE_ALREADY_EXISTS");
         expect(database.match(/CREATE TABLE/g)).toHaveLength(1);
       });
 
-      it("keeps the TinyBase starter's markup and styles apart from the accent", async () => {
+      it("keeps the TinyBase starter's markup and styles with local fonts and accent", async () => {
         generate("styled", language, "memory");
         const project = resolve(output, "styled");
 
         const todoItem = await read(project, `src/todoItem.${ext}`);
-        expect(todoItem).toContain("`todoItem${completed ? ' completed' : ''}`");
+        expect(todoItem).toContain(
+          "`todoItem${completed ? ' completed' : ''}`",
+        );
         expect(todoItem).toContain("checkbox.id = `todo-${id}`");
         expect(await read(project, `src/todoInput.${ext}`)).toContain(
           "container.id = 'todoInput'",
@@ -239,8 +249,11 @@ describe("create-tinyjoin CLI", () => {
         expect(database).toContain(
           "export const DATA_DIR = 'opfs://tinyjoin-saved-app-db-v2'",
         );
-        expect(readme).toContain("saved and restored when\nyou reload the page");
-        expect(readme).not.toMatch(/worker|wasm|opfs/i);
+        expect(readme).toContain(
+          "saved and restored when\nyou reload the page",
+        );
+        expect(readme).not.toMatch(/wasm|opfs/i);
+        expect(readme).toContain("Tabs share the same saved database");
       });
 
       it("matches the generated project snapshot", async () => {

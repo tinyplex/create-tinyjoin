@@ -106,7 +106,9 @@ const config = {
       throw new TypeError(validation);
     }
     const language = normalizeChoice(
-      answers.language === 0 ? "typescript" : (answers.language ?? "typescript"),
+      answers.language === 0
+        ? "typescript"
+        : (answers.language ?? "typescript"),
       "language",
       ["typescript", "javascript"],
     );
@@ -162,6 +164,12 @@ const config = {
         template: "client/index.html.hbs",
         output: "index.html",
         prettier: true,
+      },
+      {
+        template: "client/vite.config.ts.hbs",
+        output: `vite.config.${ext}`,
+        prettier: true,
+        transpile: !typescript,
       },
       ...(typescript
         ? [

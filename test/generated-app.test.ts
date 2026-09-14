@@ -27,7 +27,8 @@ describe.sequential("generated apps", () => {
     expect(database).toContain(
       "export const DATA_DIR = 'opfs://tinyjoin-app-db-v2'",
     );
-    expect(database).toContain("CREATE TABLE IF NOT EXISTS todos");
+    expect(database).toContain("CREATE TABLE todos");
+    expect(database).toContain("TABLE_ALREADY_EXISTS");
     expect(database).toContain("database.close()");
     expect(todoInput).toContain("crypto.randomUUID()");
     expect(todoInput).toContain("INSERT INTO todos");
@@ -44,7 +45,9 @@ describe.sequential("generated apps", () => {
 
     // The JavaScript starters are the same sources with their types removed.
     const javascriptDatabase = await read(generatedApp("js-app"), "database");
-    expect(javascriptDatabase).toContain("import {create, ClientError} from 'tinyjoin'");
+    expect(javascriptDatabase).toContain(
+      "import {create, ClientError} from 'tinyjoin'",
+    );
     expect(javascriptDatabase).not.toMatch(/:\s*Promise<|export type /);
     expect(javascriptDatabase).toContain("await create(DATA_DIR)");
 
@@ -117,6 +120,19 @@ async function installBuildAndCheck(app: GeneratedApp): Promise<void> {
 
   const assets = await readdir(resolve(path, "dist/assets"));
   expect(assets.some((file) => file.endsWith(".wasm"))).toBe(true);
+  const offline = JSON.parse(
+    await readFile(resolve(path, "dist/tinyjoin-precache.json"), "utf8"),
+  ) as { assets: { url: string; revision: string }[] };
+  const cachedUrls = offline.assets.map(({ url }) => url);
+  expect(cachedUrls).toContain("index.html");
+  expect(cachedUrls).toContain("favicon.svg");
+  expect(cachedUrls).toContain("tinyjoin-register.js");
+  for (const file of assets) {
+    expect(cachedUrls).toContain(`assets/${file}`);
+  }
+  expect(
+    await readFile(resolve(path, "dist/tinyjoin-sw.js"), "utf8"),
+  ).toContain("tinyjoin-precache.js");
 }
 
 function run(

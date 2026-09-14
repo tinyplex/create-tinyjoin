@@ -19,23 +19,7 @@ export const createTodosDatabase = async (): Promise<TodosDatabase> => {
   const database = await create(DATA_DIR);
 
   try {
-    // Create the table, and add the starter todos, only on the first visit.
-    if (!(await hasTodosTable(database))) {
-      await database.exec(`
-        CREATE TABLE IF NOT EXISTS todos (
-          id TEXT PRIMARY KEY,
-          text TEXT NOT NULL,
-          completed BOOLEAN NOT NULL DEFAULT false,
-          created INTEGER NOT NULL DEFAULT 0
-        )
-      `);
-      await database.query(
-        `INSERT INTO todos (id, text, completed, created)
-         VALUES ($1, $2, $3, $4), ($5, $6, $7, $8)`,
-        ['1', 'Learn TinyJoin', false, 1, '2', 'Build an app', false, 2],
-      );
-    }
-
+    await initializeTodos(database);
     return database;
   } catch (error) {
     await database.close().catch(() => undefined);
@@ -43,15 +27,24 @@ export const createTodosDatabase = async (): Promise<TodosDatabase> => {
   }
 };
 
-const hasTodosTable = async (database: TodosDatabase): Promise<boolean> => {
+const initializeTodos = async (database: TodosDatabase): Promise<void> => {
   try {
-    await database.query('SELECT id FROM todos LIMIT 1');
-    return true;
+    // One atomic script creates and seeds the table. Concurrent tabs can race
+    // to initialize it, but only the tab that creates the table adds examples.
+    await database.exec(`
+      CREATE TABLE todos (
+        id TEXT PRIMARY KEY,
+        text TEXT NOT NULL,
+        completed BOOLEAN NOT NULL DEFAULT false,
+        created INTEGER NOT NULL DEFAULT 0
+      );
+      INSERT INTO todos (id, text, completed, created)
+      VALUES ('1', 'Learn TinyJoin', false, 1), ('2', 'Build an app', false, 2)
+    `);
   } catch (error) {
-    if (error instanceof ClientError && error.code === 'TABLE_NOT_FOUND') {
-      return false;
+    if (!(error instanceof ClientError && error.code === 'TABLE_ALREADY_EXISTS')) {
+      throw error;
     }
-    throw error;
   }
 };
 

@@ -17,11 +17,13 @@ Your app should look something like this:
 - Task list with add/complete/delete
 - Single TinyJoin database with one `todos` table
 - Demonstrates basic CRUD operations in SQL
+- Automatic multi-tab access for saved data
+- Offline production app loading after the first online visit
 - Perfect starter example
 
 It shares its markup and styling with the equivalent
 [create-tinybase](https://github.com/tinyplex/create-tinybase) vanilla
-TypeScript starter, apart from the TinyJoin accent color.
+TypeScript starter, with the TinyJoin accent color and system fonts.
 
 For agents and CI, every option can be supplied non-interactively:
 
@@ -45,6 +47,7 @@ The generated project is a single Vite application at its root (`.ts` below
 becomes `.js` when JavaScript is chosen):
 
 - `index.html` loads the app and defines its theme variables.
+- `vite.config.ts` enables production offline loading through `tinyjoinOffline()`.
 - `src/index.ts` bootstraps the app on load.
 - `src/app.ts` builds the app shell, showing a spinner until the database opens.
 - `src/database.ts` opens the database, defines the `todos` table, and adds the
@@ -63,6 +66,20 @@ the JavaScript language is chosen, and `tinycreate` blanks the types during
 post-processing. A JavaScript project also drops `tsconfig.json`, the
 `typescript` devDependency, and the `tsc --noEmit` step from its build script.
 
+## Offline builds
+
+Generated applications use `tinyjoinOffline()` from `tinyjoin/vite`. The
+production build includes the application and complete database runtime in
+its offline copy, including files loaded only when persistent storage opens.
+There are no remote font requests. Development remains a normal Vite session;
+use `npm run build` and `npm run preview` to test offline behavior.
+
+New application versions wait for open tabs to close before activating. This
+keeps existing pages on their matching build; it does not migrate database
+schemas. Applications with their own service worker can use the plugin's
+manifest mode. Offline loading and saved local data do not synchronize with
+a server or another device.
+
 ## Development
 
 ```sh
@@ -80,7 +97,8 @@ vocabulary to `cspell.json` rather than disabling the check.
 modes, against the snapshots in `test/__snapshots__`. Run
 `npx vitest run test/cli.test.ts -u` to accept intentional template changes.
 `npm run test:generated` installs and builds all four combinations, and
-`npm run test:e2e` then drives the two saved apps in Chromium.
+`npm run test:e2e` then drives the two saved apps in Chromium and tests offline
+production loading for all four combinations.
 
 Run the local generator from this repository's parent directory with:
 

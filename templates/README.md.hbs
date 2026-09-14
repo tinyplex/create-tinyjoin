@@ -25,6 +25,7 @@ This project is a single web application, built with Vite and
 ### Key Files
 
 - **`index.html`**: The main HTML file that loads your app
+- **`vite.config.{{ext}}`**: Production build and offline support
 - **`src/index.{{ext}}`**: Entry point that bootstraps the app
 - **`src/app.{{ext}}`**: Main application logic
 - **`src/database.{{ext}}`**: TinyJoin database and `todos` table setup
@@ -42,8 +43,8 @@ to the `todos` table so that every change re-renders the list.
 
 {{#if usesOpfs}}
 **Persistence** is enabled. Your data is automatically saved and restored when
-you reload the page. Open this app in one tab at a time. If another tab has
-the database open, close it and select **Retry** on the startup error.
+you reload the page. Tabs share the same saved database, and changes appear
+in every open tab.
 
 The browser can clear or evict saved data, so keep a separate copy of anything
 irreplaceable. Deleting all todos leaves the list empty after a reload; the
@@ -56,6 +57,32 @@ start fresh after a reload.
 Startup failures replace the loading spinner with a message and **Retry**.
 Failed changes show an error; a failed addition keeps the text you entered.
 Writes are not automatically retried.
+
+## Offline Use
+
+Build and preview the app to try offline support:
+
+```sh
+npm run build
+npm run preview
+```
+
+The production app downloads a local copy on its first online visit. Once
+that download finishes, you can close it, reopen it without a connection,
+and keep using your todos.{{#unless usesOpfs}} Your selected data mode still
+starts with a fresh todo list each visit.{{/unless}} The development server
+does not install an offline copy.
+
+Deploy the contents of `dist/` to an HTTPS host. Offline loading is set up by
+`tinyjoinOffline()` in `vite.config.{{ext}}`; no extra application code is needed.
+New versions wait until all open tabs close before taking over, so a working
+tab keeps its matching application files. A new deployment does not migrate
+saved database schemas. Offline use does not synchronize data with a server
+or another device.
+
+If you later add your own service worker, use the plugin's manifest mode to
+integrate its cached files with that worker instead of registering two for
+the same application. See the [offline guide](https://tinyjoin.org/guides/offline/).
 
 ## Learn More
 

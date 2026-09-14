@@ -45,6 +45,12 @@ export const e2eApps: GeneratedApp[] = generatedApps.filter(
   ({ storage }) => storage === "opfs",
 );
 
+/** Production previews exercise offline loading in every generated variant. */
+export const offlineApps = generatedApps.map((app) => ({
+  ...app,
+  port: app.port + 100,
+}));
+
 export function generatedApp(name: string): GeneratedApp {
   const found = generatedApps.find((candidate) => candidate.name === name);
   if (!found) {

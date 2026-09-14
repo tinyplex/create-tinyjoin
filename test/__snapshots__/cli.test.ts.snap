@@ -21,12 +21,11 @@ lifecycle while adapting the application to the user's requirements.
 - **Persistence**: kept for the current visit only
 
 The database client is opened once in \`src/database.js\` and shared through
-the \`databaseReady\` promise. Keep that single client: opening a second one for
-the same persistent database is rejected.
+the \`databaseReady\` promise. Reuse it within the application.
 
-The schema is created before the first read, and the starter rows are only
-inserted when the table is first created. An existing empty table stays empty.
-Preserve that ordering so a reload does not duplicate or overwrite existing data.
+One atomic script creates the schema and inserts starter rows. Only
+\`TABLE_ALREADY_EXISTS\` is ignored, so concurrent first visits cannot seed
+twice and an existing empty table stays empty. Preserve this behavior.
 
 Await writes, preserve drafts on failure, and keep errors visible. Retry at
 startup reloads the page to create a fresh client. Do not automatically replay
@@ -40,6 +39,14 @@ reloads it so the app creates a fresh client instead of reusing a closed one.
 - \`src/database.js\` opens the database and defines the \`todos\` table.
 - \`src/app.js\` contains the main application UI.
 - \`src/todoList.js\` reads the \`todos\` table and subscribes to its changes.
+- \`vite.config.js\` enables offline production builds with \`tinyjoinOffline()\`.
+
+The production app caches its complete build after an online visit. Keep the
+offline plugin configured when changing build output. It waits for open tabs
+to close before activating an update; do not force updates into running tabs.
+For an existing service worker, use the plugin's manifest mode and integrate
+its assets there instead of adding a competing registration. Offline caching
+does not migrate a saved schema or synchronize data to a server.
 
 ## Working Method
 
@@ -63,6 +70,10 @@ npm run build
 
 Change data in the running app, reload the page, and confirm the change
 resets, as this starter was generated without persistence.
+For offline verification, use \`npm run preview\`, wait for the browser's offline
+copy to finish installing, close the page, disconnect the network, and reopen
+the same URL. Verify loading, edits, and reloads; the development server does
+not install offline support.
 
 Current TinyJoin documentation: https://tinyjoin.org/llms.txt
 ",
@@ -93,6 +104,7 @@ JavaScript.
 ### Key Files
 
 - **\`index.html\`**: The main HTML file that loads your app
+- **\`vite.config.js\`**: Production build and offline support
 - **\`src/index.js\`**: Entry point that bootstraps the app
 - **\`src/app.js\`**: Main application logic
 - **\`src/database.js\`**: TinyJoin database and \`todos\` table setup
@@ -115,6 +127,32 @@ Startup failures replace the loading spinner with a message and **Retry**.
 Failed changes show an error; a failed addition keeps the text you entered.
 Writes are not automatically retried.
 
+## Offline Use
+
+Build and preview the app to try offline support:
+
+\`\`\`sh
+npm run build
+npm run preview
+\`\`\`
+
+The production app downloads a local copy on its first online visit. Once
+that download finishes, you can close it, reopen it without a connection,
+and keep using your todos. Your selected data mode still
+starts with a fresh todo list each visit. The development server
+does not install an offline copy.
+
+Deploy the contents of \`dist/\` to an HTTPS host. Offline loading is set up by
+\`tinyjoinOffline()\` in \`vite.config.js\`; no extra application code is needed.
+New versions wait until all open tabs close before taking over, so a working
+tab keeps its matching application files. A new deployment does not migrate
+saved database schemas. Offline use does not synchronize data with a server
+or another device.
+
+If you later add your own service worker, use the plugin's manifest mode to
+integrate its cached files with that worker instead of registering two for
+the same application. See the [offline guide](https://tinyjoin.org/guides/offline/).
+
 ## Learn More
 
 - [TinyJoin Documentation](https://tinyjoin.org)
@@ -125,12 +163,6 @@ Writes are not automatically retried.
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;800&display=swap"
-    />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>TinyJoin Todos</title>
     <style>
@@ -142,7 +174,7 @@ Writes are not automatically retried.
         user-select: none;
         margin: 0;
         padding: 0;
-        font-family: 'Inter', sans-serif;
+        font-family: system-ui, sans-serif;
       }
 
       #root {
@@ -308,23 +340,7 @@ export const createTodosDatabase = async () => {
   const database = await create(DATA_DIR);
 
   try {
-    // Create the table, and add the starter todos, only on the first visit.
-    if (!(await hasTodosTable(database))) {
-      await database.exec(\`
-        CREATE TABLE IF NOT EXISTS todos (
-          id TEXT PRIMARY KEY,
-          text TEXT NOT NULL,
-          completed BOOLEAN NOT NULL DEFAULT false,
-          created INTEGER NOT NULL DEFAULT 0
-        )
-      \`);
-      await database.query(
-        \`INSERT INTO todos (id, text, completed, created)
-         VALUES ($1, $2, $3, $4), ($5, $6, $7, $8)\`,
-        ['1', 'Learn TinyJoin', false, 1, '2', 'Build an app', false, 2],
-      );
-    }
-
+    await initializeTodos(database);
     return database;
   } catch (error) {
     await database.close().catch(() => undefined);
@@ -332,15 +348,26 @@ export const createTodosDatabase = async () => {
   }
 };
 
-const hasTodosTable = async (database) => {
+const initializeTodos = async (database) => {
   try {
-    await database.query('SELECT id FROM todos LIMIT 1');
-    return true;
+    // One atomic script creates and seeds the table. Concurrent tabs can race
+    // to initialize it, but only the tab that creates the table adds examples.
+    await database.exec(\`
+      CREATE TABLE todos (
+        id TEXT PRIMARY KEY,
+        text TEXT NOT NULL,
+        completed BOOLEAN NOT NULL DEFAULT false,
+        created INTEGER NOT NULL DEFAULT 0
+      );
+      INSERT INTO todos (id, text, completed, created)
+      VALUES ('1', 'Learn TinyJoin', false, 1), ('2', 'Build an app', false, 2)
+    \`);
   } catch (error) {
-    if (error instanceof ClientError && error.code === 'TABLE_NOT_FOUND') {
-      return false;
+    if (!(
+      error instanceof ClientError && error.code === 'TABLE_ALREADY_EXISTS'
+    )) {
+      throw error;
     }
-    throw error;
   }
 };
 
@@ -393,7 +420,7 @@ export const showError = (element, error, fallback) => {
   if (error instanceof ClientError) {
     if (error.code === 'STORAGE_LOCKED') {
       message =
-        'This app is already open in another tab. Close the other tab, then select Retry.';
+        'The saved database is busy. Close older versions of this app, then select Retry.';
     } else if (
       [
         'RECOVERY_REQUIRED',
@@ -922,6 +949,13 @@ export const createTopBar = () => {
 
   return topBar;
 };
+",
+  "vite.config.js": "import {tinyjoinOffline} from 'tinyjoin/vite';
+import {defineConfig} from 'vite';
+
+export default defineConfig({
+  plugins: [tinyjoinOffline()],
+});
 ",
 }
 `;
@@ -947,13 +981,12 @@ lifecycle while adapting the application to the user's requirements.
 - **Persistence**: saved in this browser across reloads
 
 The database client is opened once in \`src/database.js\` and shared through
-the \`databaseReady\` promise. Keep that single client: opening a second one for
-the same persistent database is rejected. If another tab owns
-the database, startup shows an error; close that tab and use Retry.
+the \`databaseReady\` promise. Reuse it within the application.
+Tabs share the saved database automatically; keep its name stable.
 
-The schema is created before the first read, and the starter rows are only
-inserted when the table is first created. An existing empty table stays empty.
-Preserve that ordering so a reload does not duplicate or overwrite existing data.
+One atomic script creates the schema and inserts starter rows. Only
+\`TABLE_ALREADY_EXISTS\` is ignored, so concurrent first visits cannot seed
+twice and an existing empty table stays empty. Preserve this behavior.
 
 Await writes, preserve drafts on failure, and keep errors visible. Retry at
 startup reloads the page to create a fresh client. Do not automatically replay
@@ -967,6 +1000,14 @@ reloads it so the app creates a fresh client instead of reusing a closed one.
 - \`src/database.js\` opens the database and defines the \`todos\` table.
 - \`src/app.js\` contains the main application UI.
 - \`src/todoList.js\` reads the \`todos\` table and subscribes to its changes.
+- \`vite.config.js\` enables offline production builds with \`tinyjoinOffline()\`.
+
+The production app caches its complete build after an online visit. Keep the
+offline plugin configured when changing build output. It waits for open tabs
+to close before activating an update; do not force updates into running tabs.
+For an existing service worker, use the plugin's manifest mode and integrate
+its assets there instead of adding a competing registration. Offline caching
+does not migrate a saved schema or synchronize data to a server.
 
 ## Working Method
 
@@ -990,6 +1031,10 @@ npm run build
 
 Change data in the running app, reload the page, and confirm the change
 remains.
+For offline verification, use \`npm run preview\`, wait for the browser's offline
+copy to finish installing, close the page, disconnect the network, and reopen
+the same URL. Verify loading, edits, and reloads; the development server does
+not install offline support.
 
 Current TinyJoin documentation: https://tinyjoin.org/llms.txt
 ",
@@ -1020,6 +1065,7 @@ JavaScript.
 ### Key Files
 
 - **\`index.html\`**: The main HTML file that loads your app
+- **\`vite.config.js\`**: Production build and offline support
 - **\`src/index.js\`**: Entry point that bootstraps the app
 - **\`src/app.js\`**: Main application logic
 - **\`src/database.js\`**: TinyJoin database and \`todos\` table setup
@@ -1036,8 +1082,8 @@ ordinary SQL queries, writes them with parameterized statements, and subscribes
 to the \`todos\` table so that every change re-renders the list.
 
 **Persistence** is enabled. Your data is automatically saved and restored when
-you reload the page. Open this app in one tab at a time. If another tab has
-the database open, close it and select **Retry** on the startup error.
+you reload the page. Tabs share the same saved database, and changes appear
+in every open tab.
 
 The browser can clear or evict saved data, so keep a separate copy of anything
 irreplaceable. Deleting all todos leaves the list empty after a reload; the
@@ -1046,6 +1092,31 @@ example rows are added only when the table is first created.
 Startup failures replace the loading spinner with a message and **Retry**.
 Failed changes show an error; a failed addition keeps the text you entered.
 Writes are not automatically retried.
+
+## Offline Use
+
+Build and preview the app to try offline support:
+
+\`\`\`sh
+npm run build
+npm run preview
+\`\`\`
+
+The production app downloads a local copy on its first online visit. Once
+that download finishes, you can close it, reopen it without a connection,
+and keep using your todos. The development server
+does not install an offline copy.
+
+Deploy the contents of \`dist/\` to an HTTPS host. Offline loading is set up by
+\`tinyjoinOffline()\` in \`vite.config.js\`; no extra application code is needed.
+New versions wait until all open tabs close before taking over, so a working
+tab keeps its matching application files. A new deployment does not migrate
+saved database schemas. Offline use does not synchronize data with a server
+or another device.
+
+If you later add your own service worker, use the plugin's manifest mode to
+integrate its cached files with that worker instead of registering two for
+the same application. See the [offline guide](https://tinyjoin.org/guides/offline/).
 
 ## Learn More
 
@@ -1057,12 +1128,6 @@ Writes are not automatically retried.
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;800&display=swap"
-    />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>TinyJoin Todos</title>
     <style>
@@ -1074,7 +1139,7 @@ Writes are not automatically retried.
         user-select: none;
         margin: 0;
         padding: 0;
-        font-family: 'Inter', sans-serif;
+        font-family: system-ui, sans-serif;
       }
 
       #root {
@@ -1240,23 +1305,7 @@ export const createTodosDatabase = async () => {
   const database = await create(DATA_DIR);
 
   try {
-    // Create the table, and add the starter todos, only on the first visit.
-    if (!(await hasTodosTable(database))) {
-      await database.exec(\`
-        CREATE TABLE IF NOT EXISTS todos (
-          id TEXT PRIMARY KEY,
-          text TEXT NOT NULL,
-          completed BOOLEAN NOT NULL DEFAULT false,
-          created INTEGER NOT NULL DEFAULT 0
-        )
-      \`);
-      await database.query(
-        \`INSERT INTO todos (id, text, completed, created)
-         VALUES ($1, $2, $3, $4), ($5, $6, $7, $8)\`,
-        ['1', 'Learn TinyJoin', false, 1, '2', 'Build an app', false, 2],
-      );
-    }
-
+    await initializeTodos(database);
     return database;
   } catch (error) {
     await database.close().catch(() => undefined);
@@ -1264,15 +1313,26 @@ export const createTodosDatabase = async () => {
   }
 };
 
-const hasTodosTable = async (database) => {
+const initializeTodos = async (database) => {
   try {
-    await database.query('SELECT id FROM todos LIMIT 1');
-    return true;
+    // One atomic script creates and seeds the table. Concurrent tabs can race
+    // to initialize it, but only the tab that creates the table adds examples.
+    await database.exec(\`
+      CREATE TABLE todos (
+        id TEXT PRIMARY KEY,
+        text TEXT NOT NULL,
+        completed BOOLEAN NOT NULL DEFAULT false,
+        created INTEGER NOT NULL DEFAULT 0
+      );
+      INSERT INTO todos (id, text, completed, created)
+      VALUES ('1', 'Learn TinyJoin', false, 1), ('2', 'Build an app', false, 2)
+    \`);
   } catch (error) {
-    if (error instanceof ClientError && error.code === 'TABLE_NOT_FOUND') {
-      return false;
+    if (!(
+      error instanceof ClientError && error.code === 'TABLE_ALREADY_EXISTS'
+    )) {
+      throw error;
     }
-    throw error;
   }
 };
 
@@ -1325,7 +1385,7 @@ export const showError = (element, error, fallback) => {
   if (error instanceof ClientError) {
     if (error.code === 'STORAGE_LOCKED') {
       message =
-        'This app is already open in another tab. Close the other tab, then select Retry.';
+        'The saved database is busy. Close older versions of this app, then select Retry.';
     } else if (
       [
         'RECOVERY_REQUIRED',
@@ -1855,6 +1915,13 @@ export const createTopBar = () => {
   return topBar;
 };
 ",
+  "vite.config.js": "import {tinyjoinOffline} from 'tinyjoin/vite';
+import {defineConfig} from 'vite';
+
+export default defineConfig({
+  plugins: [tinyjoinOffline()],
+});
+",
 }
 `;
 
@@ -1879,12 +1946,11 @@ lifecycle while adapting the application to the user's requirements.
 - **Persistence**: kept for the current visit only
 
 The database client is opened once in \`src/database.ts\` and shared through
-the \`databaseReady\` promise. Keep that single client: opening a second one for
-the same persistent database is rejected.
+the \`databaseReady\` promise. Reuse it within the application.
 
-The schema is created before the first read, and the starter rows are only
-inserted when the table is first created. An existing empty table stays empty.
-Preserve that ordering so a reload does not duplicate or overwrite existing data.
+One atomic script creates the schema and inserts starter rows. Only
+\`TABLE_ALREADY_EXISTS\` is ignored, so concurrent first visits cannot seed
+twice and an existing empty table stays empty. Preserve this behavior.
 
 Await writes, preserve drafts on failure, and keep errors visible. Retry at
 startup reloads the page to create a fresh client. Do not automatically replay
@@ -1898,6 +1964,14 @@ reloads it so the app creates a fresh client instead of reusing a closed one.
 - \`src/database.ts\` opens the database and defines the \`todos\` table.
 - \`src/app.ts\` contains the main application UI.
 - \`src/todoList.ts\` reads the \`todos\` table and subscribes to its changes.
+- \`vite.config.ts\` enables offline production builds with \`tinyjoinOffline()\`.
+
+The production app caches its complete build after an online visit. Keep the
+offline plugin configured when changing build output. It waits for open tabs
+to close before activating an update; do not force updates into running tabs.
+For an existing service worker, use the plugin's manifest mode and integrate
+its assets there instead of adding a competing registration. Offline caching
+does not migrate a saved schema or synchronize data to a server.
 
 ## Working Method
 
@@ -1921,6 +1995,10 @@ npm run build
 
 Change data in the running app, reload the page, and confirm the change
 resets, as this starter was generated without persistence.
+For offline verification, use \`npm run preview\`, wait for the browser's offline
+copy to finish installing, close the page, disconnect the network, and reopen
+the same URL. Verify loading, edits, and reloads; the development server does
+not install offline support.
 
 Current TinyJoin documentation: https://tinyjoin.org/llms.txt
 ",
@@ -1951,6 +2029,7 @@ TypeScript.
 ### Key Files
 
 - **\`index.html\`**: The main HTML file that loads your app
+- **\`vite.config.ts\`**: Production build and offline support
 - **\`src/index.ts\`**: Entry point that bootstraps the app
 - **\`src/app.ts\`**: Main application logic
 - **\`src/database.ts\`**: TinyJoin database and \`todos\` table setup
@@ -1973,6 +2052,32 @@ Startup failures replace the loading spinner with a message and **Retry**.
 Failed changes show an error; a failed addition keeps the text you entered.
 Writes are not automatically retried.
 
+## Offline Use
+
+Build and preview the app to try offline support:
+
+\`\`\`sh
+npm run build
+npm run preview
+\`\`\`
+
+The production app downloads a local copy on its first online visit. Once
+that download finishes, you can close it, reopen it without a connection,
+and keep using your todos. Your selected data mode still
+starts with a fresh todo list each visit. The development server
+does not install an offline copy.
+
+Deploy the contents of \`dist/\` to an HTTPS host. Offline loading is set up by
+\`tinyjoinOffline()\` in \`vite.config.ts\`; no extra application code is needed.
+New versions wait until all open tabs close before taking over, so a working
+tab keeps its matching application files. A new deployment does not migrate
+saved database schemas. Offline use does not synchronize data with a server
+or another device.
+
+If you later add your own service worker, use the plugin's manifest mode to
+integrate its cached files with that worker instead of registering two for
+the same application. See the [offline guide](https://tinyjoin.org/guides/offline/).
+
 ## Learn More
 
 - [TinyJoin Documentation](https://tinyjoin.org)
@@ -1983,12 +2088,6 @@ Writes are not automatically retried.
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;800&display=swap"
-    />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>TinyJoin Todos</title>
     <style>
@@ -2000,7 +2099,7 @@ Writes are not automatically retried.
         user-select: none;
         margin: 0;
         padding: 0;
-        font-family: 'Inter', sans-serif;
+        font-family: system-ui, sans-serif;
       }
 
       #root {
@@ -2177,23 +2276,7 @@ export const createTodosDatabase = async (): Promise<TodosDatabase> => {
   const database = await create(DATA_DIR);
 
   try {
-    // Create the table, and add the starter todos, only on the first visit.
-    if (!(await hasTodosTable(database))) {
-      await database.exec(\`
-        CREATE TABLE IF NOT EXISTS todos (
-          id TEXT PRIMARY KEY,
-          text TEXT NOT NULL,
-          completed BOOLEAN NOT NULL DEFAULT false,
-          created INTEGER NOT NULL DEFAULT 0
-        )
-      \`);
-      await database.query(
-        \`INSERT INTO todos (id, text, completed, created)
-         VALUES ($1, $2, $3, $4), ($5, $6, $7, $8)\`,
-        ['1', 'Learn TinyJoin', false, 1, '2', 'Build an app', false, 2],
-      );
-    }
-
+    await initializeTodos(database);
     return database;
   } catch (error) {
     await database.close().catch(() => undefined);
@@ -2201,15 +2284,26 @@ export const createTodosDatabase = async (): Promise<TodosDatabase> => {
   }
 };
 
-const hasTodosTable = async (database: TodosDatabase): Promise<boolean> => {
+const initializeTodos = async (database: TodosDatabase): Promise<void> => {
   try {
-    await database.query('SELECT id FROM todos LIMIT 1');
-    return true;
+    // One atomic script creates and seeds the table. Concurrent tabs can race
+    // to initialize it, but only the tab that creates the table adds examples.
+    await database.exec(\`
+      CREATE TABLE todos (
+        id TEXT PRIMARY KEY,
+        text TEXT NOT NULL,
+        completed BOOLEAN NOT NULL DEFAULT false,
+        created INTEGER NOT NULL DEFAULT 0
+      );
+      INSERT INTO todos (id, text, completed, created)
+      VALUES ('1', 'Learn TinyJoin', false, 1), ('2', 'Build an app', false, 2)
+    \`);
   } catch (error) {
-    if (error instanceof ClientError && error.code === 'TABLE_NOT_FOUND') {
-      return false;
+    if (!(
+      error instanceof ClientError && error.code === 'TABLE_ALREADY_EXISTS'
+    )) {
+      throw error;
     }
-    throw error;
   }
 };
 
@@ -2266,7 +2360,7 @@ export const showError = (
   if (error instanceof ClientError) {
     if (error.code === 'STORAGE_LOCKED') {
       message =
-        'This app is already open in another tab. Close the other tab, then select Retry.';
+        'The saved database is busy. Close older versions of this app, then select Retry.';
     } else if (
       [
         'RECOVERY_REQUIRED',
@@ -2831,6 +2925,13 @@ export const createTopBar = (): HTMLDivElement => {
   "include": ["src/**/*.ts"]
 }
 ",
+  "vite.config.ts": "import {tinyjoinOffline} from 'tinyjoin/vite';
+import {defineConfig} from 'vite';
+
+export default defineConfig({
+  plugins: [tinyjoinOffline()],
+});
+",
 }
 `;
 
@@ -2855,13 +2956,12 @@ lifecycle while adapting the application to the user's requirements.
 - **Persistence**: saved in this browser across reloads
 
 The database client is opened once in \`src/database.ts\` and shared through
-the \`databaseReady\` promise. Keep that single client: opening a second one for
-the same persistent database is rejected. If another tab owns
-the database, startup shows an error; close that tab and use Retry.
+the \`databaseReady\` promise. Reuse it within the application.
+Tabs share the saved database automatically; keep its name stable.
 
-The schema is created before the first read, and the starter rows are only
-inserted when the table is first created. An existing empty table stays empty.
-Preserve that ordering so a reload does not duplicate or overwrite existing data.
+One atomic script creates the schema and inserts starter rows. Only
+\`TABLE_ALREADY_EXISTS\` is ignored, so concurrent first visits cannot seed
+twice and an existing empty table stays empty. Preserve this behavior.
 
 Await writes, preserve drafts on failure, and keep errors visible. Retry at
 startup reloads the page to create a fresh client. Do not automatically replay
@@ -2875,6 +2975,14 @@ reloads it so the app creates a fresh client instead of reusing a closed one.
 - \`src/database.ts\` opens the database and defines the \`todos\` table.
 - \`src/app.ts\` contains the main application UI.
 - \`src/todoList.ts\` reads the \`todos\` table and subscribes to its changes.
+- \`vite.config.ts\` enables offline production builds with \`tinyjoinOffline()\`.
+
+The production app caches its complete build after an online visit. Keep the
+offline plugin configured when changing build output. It waits for open tabs
+to close before activating an update; do not force updates into running tabs.
+For an existing service worker, use the plugin's manifest mode and integrate
+its assets there instead of adding a competing registration. Offline caching
+does not migrate a saved schema or synchronize data to a server.
 
 ## Working Method
 
@@ -2898,6 +3006,10 @@ npm run build
 
 Change data in the running app, reload the page, and confirm the change
 remains.
+For offline verification, use \`npm run preview\`, wait for the browser's offline
+copy to finish installing, close the page, disconnect the network, and reopen
+the same URL. Verify loading, edits, and reloads; the development server does
+not install offline support.
 
 Current TinyJoin documentation: https://tinyjoin.org/llms.txt
 ",
@@ -2928,6 +3040,7 @@ TypeScript.
 ### Key Files
 
 - **\`index.html\`**: The main HTML file that loads your app
+- **\`vite.config.ts\`**: Production build and offline support
 - **\`src/index.ts\`**: Entry point that bootstraps the app
 - **\`src/app.ts\`**: Main application logic
 - **\`src/database.ts\`**: TinyJoin database and \`todos\` table setup
@@ -2944,8 +3057,8 @@ ordinary SQL queries, writes them with parameterized statements, and subscribes
 to the \`todos\` table so that every change re-renders the list.
 
 **Persistence** is enabled. Your data is automatically saved and restored when
-you reload the page. Open this app in one tab at a time. If another tab has
-the database open, close it and select **Retry** on the startup error.
+you reload the page. Tabs share the same saved database, and changes appear
+in every open tab.
 
 The browser can clear or evict saved data, so keep a separate copy of anything
 irreplaceable. Deleting all todos leaves the list empty after a reload; the
@@ -2954,6 +3067,31 @@ example rows are added only when the table is first created.
 Startup failures replace the loading spinner with a message and **Retry**.
 Failed changes show an error; a failed addition keeps the text you entered.
 Writes are not automatically retried.
+
+## Offline Use
+
+Build and preview the app to try offline support:
+
+\`\`\`sh
+npm run build
+npm run preview
+\`\`\`
+
+The production app downloads a local copy on its first online visit. Once
+that download finishes, you can close it, reopen it without a connection,
+and keep using your todos. The development server
+does not install an offline copy.
+
+Deploy the contents of \`dist/\` to an HTTPS host. Offline loading is set up by
+\`tinyjoinOffline()\` in \`vite.config.ts\`; no extra application code is needed.
+New versions wait until all open tabs close before taking over, so a working
+tab keeps its matching application files. A new deployment does not migrate
+saved database schemas. Offline use does not synchronize data with a server
+or another device.
+
+If you later add your own service worker, use the plugin's manifest mode to
+integrate its cached files with that worker instead of registering two for
+the same application. See the [offline guide](https://tinyjoin.org/guides/offline/).
 
 ## Learn More
 
@@ -2965,12 +3103,6 @@ Writes are not automatically retried.
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;800&display=swap"
-    />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>TinyJoin Todos</title>
     <style>
@@ -2982,7 +3114,7 @@ Writes are not automatically retried.
         user-select: none;
         margin: 0;
         padding: 0;
-        font-family: 'Inter', sans-serif;
+        font-family: system-ui, sans-serif;
       }
 
       #root {
@@ -3159,23 +3291,7 @@ export const createTodosDatabase = async (): Promise<TodosDatabase> => {
   const database = await create(DATA_DIR);
 
   try {
-    // Create the table, and add the starter todos, only on the first visit.
-    if (!(await hasTodosTable(database))) {
-      await database.exec(\`
-        CREATE TABLE IF NOT EXISTS todos (
-          id TEXT PRIMARY KEY,
-          text TEXT NOT NULL,
-          completed BOOLEAN NOT NULL DEFAULT false,
-          created INTEGER NOT NULL DEFAULT 0
-        )
-      \`);
-      await database.query(
-        \`INSERT INTO todos (id, text, completed, created)
-         VALUES ($1, $2, $3, $4), ($5, $6, $7, $8)\`,
-        ['1', 'Learn TinyJoin', false, 1, '2', 'Build an app', false, 2],
-      );
-    }
-
+    await initializeTodos(database);
     return database;
   } catch (error) {
     await database.close().catch(() => undefined);
@@ -3183,15 +3299,26 @@ export const createTodosDatabase = async (): Promise<TodosDatabase> => {
   }
 };
 
-const hasTodosTable = async (database: TodosDatabase): Promise<boolean> => {
+const initializeTodos = async (database: TodosDatabase): Promise<void> => {
   try {
-    await database.query('SELECT id FROM todos LIMIT 1');
-    return true;
+    // One atomic script creates and seeds the table. Concurrent tabs can race
+    // to initialize it, but only the tab that creates the table adds examples.
+    await database.exec(\`
+      CREATE TABLE todos (
+        id TEXT PRIMARY KEY,
+        text TEXT NOT NULL,
+        completed BOOLEAN NOT NULL DEFAULT false,
+        created INTEGER NOT NULL DEFAULT 0
+      );
+      INSERT INTO todos (id, text, completed, created)
+      VALUES ('1', 'Learn TinyJoin', false, 1), ('2', 'Build an app', false, 2)
+    \`);
   } catch (error) {
-    if (error instanceof ClientError && error.code === 'TABLE_NOT_FOUND') {
-      return false;
+    if (!(
+      error instanceof ClientError && error.code === 'TABLE_ALREADY_EXISTS'
+    )) {
+      throw error;
     }
-    throw error;
   }
 };
 
@@ -3248,7 +3375,7 @@ export const showError = (
   if (error instanceof ClientError) {
     if (error.code === 'STORAGE_LOCKED') {
       message =
-        'This app is already open in another tab. Close the other tab, then select Retry.';
+        'The saved database is busy. Close older versions of this app, then select Retry.';
     } else if (
       [
         'RECOVERY_REQUIRED',
@@ -3812,6 +3939,13 @@ export const createTopBar = (): HTMLDivElement => {
   },
   "include": ["src/**/*.ts"]
 }
+",
+  "vite.config.ts": "import {tinyjoinOffline} from 'tinyjoin/vite';
+import {defineConfig} from 'vite';
+
+export default defineConfig({
+  plugins: [tinyjoinOffline()],
+});
 ",
 }
 `;
