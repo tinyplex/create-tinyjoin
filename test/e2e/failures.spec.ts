@@ -2,6 +2,29 @@ import { expect, test } from "@playwright/test";
 import { e2eApps } from "../paths.js";
 
 for (const { language, port, ext } of e2eApps) {
+  test(`the ${language} app opens a fresh client after cached-page restoration`, async ({
+    page,
+  }) => {
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await page.goto(`http://127.0.0.1:${port}/`);
+    await expect(page.locator(".todoItem")).toHaveCount(2);
+    // Exercise the lifecycle policy deterministically; this is not a claim
+    // that every browser admits this Worker-backed page to its page cache.
+    await page.evaluate(async (modulePath) => {
+      const { databaseReady } = await import(modulePath);
+      await (await databaseReady).close();
+    }, `/src/database.${ext}`);
+    const reloaded = page.waitForEvent("load");
+    await page.evaluate("dispatchEvent(new PageTransitionEvent('pageshow', {persisted: true}))");
+    await reloaded;
+    await expect(page.locator(".todoItem")).toHaveCount(2);
+    await page.locator("#todoInput input").fill("Fresh client works");
+    await page.locator("#todoInput button.primary").click();
+    await expect(page.locator(".todoItem").filter({hasText: "Fresh client works"})).toHaveCount(1);
+    expect(errors).toEqual([]);
+  });
+
   test(`the ${language} app explains a second-tab lock and recovers on Retry`, async ({
     page,
     context,

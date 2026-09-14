@@ -64,3 +64,10 @@ addEventListener(
   () => void databaseReady.then((database) => database.close()).catch(() => undefined),
   {once: true},
 );
+
+// A restored page must not reuse the client closed during pagehide.
+addEventListener('pageshow', (event) => {
+  if (event.persisted) {
+    location.reload();
+  }
+});

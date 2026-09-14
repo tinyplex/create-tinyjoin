@@ -31,6 +31,8 @@ Preserve that ordering so a reload does not duplicate or overwrite existing data
 Await writes, preserve drafts on failure, and keep errors visible. Retry at
 startup reloads the page to create a fresh client. Do not automatically replay
 a failed write: a storage failure can leave its commit outcome uncertain.
+If the browser restores a cached page after teardown, the \`pageshow\` handler
+reloads it so the app creates a fresh client instead of reusing a closed one.
 
 ## Key Files
 
@@ -354,6 +356,13 @@ addEventListener(
       .catch(() => undefined),
   {once: true},
 );
+
+// A restored page must not reuse the client closed during pagehide.
+addEventListener('pageshow', (event) => {
+  if (event.persisted) {
+    location.reload();
+  }
+});
 ",
   "src/error.css": ".error {
   color: #fca5a5;
@@ -949,6 +958,8 @@ Preserve that ordering so a reload does not duplicate or overwrite existing data
 Await writes, preserve drafts on failure, and keep errors visible. Retry at
 startup reloads the page to create a fresh client. Do not automatically replay
 a failed write: a storage failure can leave its commit outcome uncertain.
+If the browser restores a cached page after teardown, the \`pageshow\` handler
+reloads it so the app creates a fresh client instead of reusing a closed one.
 
 ## Key Files
 
@@ -1277,6 +1288,13 @@ addEventListener(
       .catch(() => undefined),
   {once: true},
 );
+
+// A restored page must not reuse the client closed during pagehide.
+addEventListener('pageshow', (event) => {
+  if (event.persisted) {
+    location.reload();
+  }
+});
 ",
   "src/error.css": ".error {
   color: #fca5a5;
@@ -1871,6 +1889,8 @@ Preserve that ordering so a reload does not duplicate or overwrite existing data
 Await writes, preserve drafts on failure, and keep errors visible. Retry at
 startup reloads the page to create a fresh client. Do not automatically replay
 a failed write: a storage failure can leave its commit outcome uncertain.
+If the browser restores a cached page after teardown, the \`pageshow\` handler
+reloads it so the app creates a fresh client instead of reusing a closed one.
 
 ## Key Files
 
@@ -2205,6 +2225,13 @@ addEventListener(
       .catch(() => undefined),
   {once: true},
 );
+
+// A restored page must not reuse the client closed during pagehide.
+addEventListener('pageshow', (event) => {
+  if (event.persisted) {
+    location.reload();
+  }
+});
 ",
   "src/error.css": ".error {
   color: #fca5a5;
@@ -2839,6 +2866,8 @@ Preserve that ordering so a reload does not duplicate or overwrite existing data
 Await writes, preserve drafts on failure, and keep errors visible. Retry at
 startup reloads the page to create a fresh client. Do not automatically replay
 a failed write: a storage failure can leave its commit outcome uncertain.
+If the browser restores a cached page after teardown, the \`pageshow\` handler
+reloads it so the app creates a fresh client instead of reusing a closed one.
 
 ## Key Files
 
@@ -3178,6 +3207,13 @@ addEventListener(
       .catch(() => undefined),
   {once: true},
 );
+
+// A restored page must not reuse the client closed during pagehide.
+addEventListener('pageshow', (event) => {
+  if (event.persisted) {
+    location.reload();
+  }
+});
 ",
   "src/error.css": ".error {
   color: #fca5a5;
