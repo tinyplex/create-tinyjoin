@@ -1,0 +1,39 @@
+import {ClientError} from 'tinyjoin';
+import './error.css';
+
+export const createError = (): HTMLParagraphElement => {
+  const element = document.createElement('p');
+  element.className = 'error';
+  element.setAttribute('role', 'alert');
+  element.hidden = true;
+  return element;
+};
+
+export const clearError = (element: HTMLElement): void => {
+  element.hidden = true;
+  element.textContent = '';
+};
+
+export const showError = (
+  element: HTMLElement,
+  error: unknown,
+  fallback: string,
+): void => {
+  let message = error instanceof Error ? `${fallback} ${error.message}` : fallback;
+  if (error instanceof ClientError) {
+    if (error.code === 'STORAGE_LOCKED') {
+      message = 'This app is already open in another tab. Close the other tab, then select Retry.';
+    } else if ([
+      'RECOVERY_REQUIRED',
+      'STORAGE_COMMIT_OUTCOME_UNKNOWN',
+      'STORAGE_ENGINE_POISONED',
+      'WORKER_ERROR',
+      'WORKER_MESSAGE_ERROR',
+      'WORKER_TERMINATED',
+    ].includes(error.code)) {
+      message = 'The change may have been saved. Reload this page and check your todos before trying again.';
+    }
+  }
+  element.textContent = message;
+  element.hidden = false;
+};

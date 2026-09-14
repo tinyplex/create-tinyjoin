@@ -22,11 +22,15 @@ lifecycle while adapting the application to the user's requirements.
 
 The database client is opened once in \`src/database.js\` and shared through
 the \`databaseReady\` promise. Keep that single client: opening a second one for
-the same data is rejected.
+the same persistent database is rejected.
 
 The schema is created before the first read, and the starter rows are only
-inserted when the table is empty. Preserve that ordering so a reload does not
-duplicate or overwrite existing data.
+inserted when the table is first created. An existing empty table stays empty.
+Preserve that ordering so a reload does not duplicate or overwrite existing data.
+
+Await writes, preserve drafts on failure, and keep errors visible. Retry at
+startup reloads the page to create a fresh client. Do not automatically replay
+a failed write: a storage failure can leave its commit outcome uncertain.
 
 ## Key Files
 
@@ -39,7 +43,7 @@ duplicate or overwrite existing data.
 
 1. Read \`README.md\` and \`src/database.js\` before making changes.
 2. Keep application data in TinyJoin rather than duplicating it in UI state.
-3. Use the \`sql\` tagged template or \`$1\` parameter arrays for application
+3. Use \`$1\` parameter arrays for application
    values. Do not concatenate user input into SQL.
 4. Generate stable row identifiers in application code.
 5. Keep the schema safe to run again when the app reloads.
@@ -104,6 +108,10 @@ to the \`todos\` table so that every change re-renders the list.
 
 **Persistence** is not enabled. Your todos are kept for the current visit and
 start fresh after a reload.
+
+Startup failures replace the loading spinner with a message and **Retry**.
+Failed changes show an error; a failed addition keeps the text you entered.
+Writes are not automatically retried.
 
 ## Learn More
 
@@ -206,6 +214,8 @@ import {createTopBar} from './topBar';
 import {showLoading, hideLoading} from './loading';
 import {createTodoInput} from './todoInput';
 import {createTodoList} from './todoList';
+import {createButton} from './button';
+import {createError, showError} from './error';
 
 export const app = async (root) => {
   const appElement = document.createElement('div');
@@ -215,19 +225,26 @@ export const app = async (root) => {
   // Show loading spinner
   const loadingDiv = showLoading(appElement);
 
-  // Wait for the database to be ready
-  const database = await databaseReady;
+  try {
+    const database = await databaseReady;
+    const todoInputContainer = createTodoInput(database);
+    appElement.appendChild(todoInputContainer);
 
-  // Remove loading spinner
-  hideLoading(loadingDiv);
+    const input = todoInputContainer.querySelector('input');
+    input.focus();
 
-  const todoInputContainer = createTodoInput(database);
-  appElement.appendChild(todoInputContainer);
-
-  const input = todoInputContainer.querySelector('input');
-  input.focus();
-
-  appElement.appendChild(createTodoList(database));
+    appElement.appendChild(createTodoList(database));
+  } catch (error) {
+    const message = createError();
+    message.id = 'startupError';
+    showError(message, error, 'Could not open your todos.');
+    appElement.append(
+      message,
+      createButton('Retry', () => location.reload(), 'primary'),
+    );
+  } finally {
+    hideLoading(loadingDiv);
+  }
 };
 ",
   "src/button.css": "button {
@@ -244,6 +261,11 @@ export const app = async (root) => {
 
 button:hover {
   border-color: #7c3aed;
+}
+
+button:disabled {
+  cursor: wait;
+  opacity: 0.6;
 }
 
 button.primary {
@@ -276,56 +298,117 @@ export const createButton = (
   return button;
 };
 ",
-  "src/database.js": "import {create} from 'tinyjoin';
+  "src/database.js": "import {create, ClientError} from 'tinyjoin';
 
 export const DATA_DIR = 'memory://';
 
 export const createTodosDatabase = async () => {
   const database = await create(DATA_DIR);
 
-  // Create the table, and add the starter todos, only on the first visit.
-  if (!(await hasTodosTable(database))) {
-    await database.exec(\`
-      CREATE TABLE IF NOT EXISTS todos (
-        id TEXT PRIMARY KEY,
-        text TEXT NOT NULL,
-        completed BOOLEAN NOT NULL DEFAULT false,
-        created INTEGER NOT NULL DEFAULT 0
-      )
-    \`);
-    await database.query(
-      \`INSERT INTO todos (id, text, completed, created)
-       VALUES ($1, $2, $3, $4), ($5, $6, $7, $8)\`,
-      ['1', 'Learn TinyJoin', false, 1, '2', 'Build an app', false, 2],
-    );
-  }
+  try {
+    // Create the table, and add the starter todos, only on the first visit.
+    if (!(await hasTodosTable(database))) {
+      await database.exec(\`
+        CREATE TABLE IF NOT EXISTS todos (
+          id TEXT PRIMARY KEY,
+          text TEXT NOT NULL,
+          completed BOOLEAN NOT NULL DEFAULT false,
+          created INTEGER NOT NULL DEFAULT 0
+        )
+      \`);
+      await database.query(
+        \`INSERT INTO todos (id, text, completed, created)
+         VALUES ($1, $2, $3, $4), ($5, $6, $7, $8)\`,
+        ['1', 'Learn TinyJoin', false, 1, '2', 'Build an app', false, 2],
+      );
+    }
 
-  return database;
+    return database;
+  } catch (error) {
+    await database.close().catch(() => undefined);
+    throw error;
+  }
 };
 
 const hasTodosTable = async (database) => {
   try {
     await database.query('SELECT id FROM todos LIMIT 1');
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    if (error instanceof ClientError && error.code === 'TABLE_NOT_FOUND') {
+      return false;
+    }
+    throw error;
   }
 };
 
 export const databaseReady = createTodosDatabase();
+// Startup can reject before the page's load event. app() presents the failure.
+void databaseReady.catch(() => undefined);
 
 addEventListener(
   'pagehide',
-  () => void databaseReady.then((database) => database.close()),
+  () =>
+    void databaseReady
+      .then((database) => database.close())
+      .catch(() => undefined),
   {once: true},
 );
+",
+  "src/error.css": ".error {
+  color: #fca5a5;
+  line-height: 1.5;
+  margin: 0 0 1rem;
+  user-select: text;
+}
+",
+  "src/error.js": "import {ClientError} from 'tinyjoin';
+import './error.css';
+
+export const createError = () => {
+  const element = document.createElement('p');
+  element.className = 'error';
+  element.setAttribute('role', 'alert');
+  element.hidden = true;
+  return element;
+};
+
+export const clearError = (element) => {
+  element.hidden = true;
+  element.textContent = '';
+};
+
+export const showError = (element, error, fallback) => {
+  let message =
+    error instanceof Error ? \`\${fallback} \${error.message}\` : fallback;
+  if (error instanceof ClientError) {
+    if (error.code === 'STORAGE_LOCKED') {
+      message =
+        'This app is already open in another tab. Close the other tab, then select Retry.';
+    } else if (
+      [
+        'RECOVERY_REQUIRED',
+        'STORAGE_COMMIT_OUTCOME_UNKNOWN',
+        'STORAGE_ENGINE_POISONED',
+        'WORKER_ERROR',
+        'WORKER_MESSAGE_ERROR',
+        'WORKER_TERMINATED',
+      ].includes(error.code)
+    ) {
+      message =
+        'The change may have been saved. Reload this page and check your todos before trying again.';
+    }
+  }
+  element.textContent = message;
+  element.hidden = false;
+};
 ",
   "src/index.js": "import {app} from './app';
 
 const root = document.getElementById('root');
 
 addEventListener('load', () => {
-  app(root);
+  void app(root);
 });
 ",
   "src/info.css": "#info {
@@ -562,47 +645,68 @@ export const createTitle = () => {
 ",
   "src/todoInput.css": "#todoInput {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
   margin-bottom: 1.5rem;
 }
 
 #todoInput input {
   flex: 1;
+  min-width: 0;
+}
+
+#todoInput .error {
+  flex-basis: 100%;
+  margin: 0;
 }
 ",
   "src/todoInput.js": "import './todoInput.css';
 import {} from './database';
 import {createButton} from './button';
 import {createInput} from './input';
+import {createError, clearError, showError} from './error';
 
 export const createTodoInput = (database) => {
   const container = document.createElement('form');
   container.id = 'todoInput';
 
   const input = createInput('What needs to be done?');
+  const addButton = createButton('Add', null, 'primary', 'submit');
+  const error = createError();
+  let pending = false;
 
-  const addTodo = () => {
+  const addTodo = async () => {
     const text = input.value.trim();
-    if (text) {
-      void database.query(
+    if (!text || pending) {
+      return;
+    }
+    pending = true;
+    input.disabled = true;
+    addButton.disabled = true;
+    clearError(error);
+    try {
+      await database.query(
         \`INSERT INTO todos (id, text, completed, created)
          VALUES ($1, $2, $3, $4)\`,
         [crypto.randomUUID(), text, false, Date.now()],
       );
       input.value = '';
+    } catch (failure) {
+      showError(error, failure, 'Could not add this todo.');
+    } finally {
+      pending = false;
+      input.disabled = false;
+      addButton.disabled = false;
       input.focus();
     }
   };
 
   container.addEventListener('submit', (event) => {
     event.preventDefault();
-    addTodo();
+    void addTodo();
   });
 
-  const addButton = createButton('Add', null, 'primary', 'submit');
-
-  container.appendChild(input);
-  container.appendChild(addButton);
+  container.append(input, addButton, error);
 
   return container;
 };
@@ -652,7 +756,7 @@ export const createTodoItem = (id, text, completed, onToggle, onDelete) => {
   checkbox.type = 'checkbox';
   checkbox.checked = completed;
   checkbox.id = \`todo-\${id}\`;
-  checkbox.addEventListener('change', onToggle);
+  checkbox.addEventListener('change', () => onToggle(checkbox));
 
   const label = document.createElement('label');
   label.textContent = text;
@@ -686,40 +790,100 @@ export const createTodoItem = (id, text, completed, onToggle, onDelete) => {
   "src/todoList.js": "import './todoList.css';
 import {} from './database';
 import {createTodoItem} from './todoItem';
+import {createError, clearError, showError} from './error';
 
 export const createTodoList = (database) => {
+  const container = document.createElement('div');
+  const error = createError();
   const list = document.createElement('div');
   list.id = 'todoList';
+  container.append(error, list);
+  let pending = false;
+  let mutationFailed = false;
+  let renderGeneration = 0;
+
+  const setDisabled = (disabled) => {
+    list.querySelectorAll('input, button').forEach((control) => {
+      control.disabled = disabled;
+    });
+  };
+
+  const mutate = async (operation, restore) => {
+    if (pending) {
+      return;
+    }
+    pending = true;
+    mutationFailed = false;
+    setDisabled(true);
+    clearError(error);
+    try {
+      await operation();
+    } catch (failure) {
+      restore?.();
+      mutationFailed = true;
+      showError(error, failure, 'Could not save this change.');
+    } finally {
+      // Refresh reads only: a rejected write may already have committed.
+      await render();
+      pending = false;
+      setDisabled(false);
+    }
+  };
 
   const render = async () => {
-    const {rows} = await database.query(
-      'SELECT id, text, completed, created FROM todos ORDER BY created, id',
-    );
-
-    list.innerHTML = '';
-    rows.forEach((todo) => {
-      const item = createTodoItem(
-        todo.id,
-        todo.text,
-        todo.completed,
-        () => {
-          void database.query('UPDATE todos SET completed = $1 WHERE id = $2', [
-            !todo.completed,
-            todo.id,
-          ]);
-        },
-        () => {
-          void database.query('DELETE FROM todos WHERE id = $1', [todo.id]);
-        },
+    const generation = ++renderGeneration;
+    try {
+      const {rows} = await database.query(
+        'SELECT id, text, completed, created FROM todos ORDER BY created, id',
       );
-      list.appendChild(item);
-    });
+      if (generation !== renderGeneration) {
+        return;
+      }
+      if (!mutationFailed) {
+        clearError(error);
+      }
+
+      const items = rows.map((todo) =>
+        createTodoItem(
+          todo.id,
+          todo.text,
+          todo.completed,
+          (checkbox) => {
+            void mutate(
+              () =>
+                database.query(
+                  'UPDATE todos SET completed = $1 WHERE id = $2',
+                  [!todo.completed, todo.id],
+                ),
+              () => {
+                checkbox.checked = todo.completed;
+              },
+            );
+          },
+          () => {
+            void mutate(() =>
+              database.query('DELETE FROM todos WHERE id = $1', [todo.id]),
+            );
+          },
+        ),
+      );
+      list.replaceChildren(...items);
+      setDisabled(pending);
+    } catch (failure) {
+      if (generation === renderGeneration && !mutationFailed) {
+        showError(
+          error,
+          failure,
+          'Could not refresh your todos. Reload to try again.',
+        );
+      }
+    }
   };
 
   database.subscribe({tables: ['todos']}, () => void render());
   void render();
 
-  return list;
+  return container;
 };
 ",
   "src/topBar.css": "#topBar {
@@ -775,11 +939,16 @@ lifecycle while adapting the application to the user's requirements.
 
 The database client is opened once in \`src/database.js\` and shared through
 the \`databaseReady\` promise. Keep that single client: opening a second one for
-the same data is rejected.
+the same persistent database is rejected. If another tab owns
+the database, startup shows an error; close that tab and use Retry.
 
 The schema is created before the first read, and the starter rows are only
-inserted when the table is empty. Preserve that ordering so a reload does not
-duplicate or overwrite existing data.
+inserted when the table is first created. An existing empty table stays empty.
+Preserve that ordering so a reload does not duplicate or overwrite existing data.
+
+Await writes, preserve drafts on failure, and keep errors visible. Retry at
+startup reloads the page to create a fresh client. Do not automatically replay
+a failed write: a storage failure can leave its commit outcome uncertain.
 
 ## Key Files
 
@@ -792,7 +961,7 @@ duplicate or overwrite existing data.
 
 1. Read \`README.md\` and \`src/database.js\` before making changes.
 2. Keep application data in TinyJoin rather than duplicating it in UI state.
-3. Use the \`sql\` tagged template or \`$1\` parameter arrays for application
+3. Use \`$1\` parameter arrays for application
    values. Do not concatenate user input into SQL.
 4. Generate stable row identifiers in application code.
 5. Keep the schema safe to run again when the app reloads.
@@ -856,7 +1025,16 @@ ordinary SQL queries, writes them with parameterized statements, and subscribes
 to the \`todos\` table so that every change re-renders the list.
 
 **Persistence** is enabled. Your data is automatically saved and restored when
-you reload the page.
+you reload the page. Open this app in one tab at a time. If another tab has
+the database open, close it and select **Retry** on the startup error.
+
+The browser can clear or evict saved data, so keep a separate copy of anything
+irreplaceable. Deleting all todos leaves the list empty after a reload; the
+example rows are added only when the table is first created.
+
+Startup failures replace the loading spinner with a message and **Retry**.
+Failed changes show an error; a failed addition keeps the text you entered.
+Writes are not automatically retried.
 
 ## Learn More
 
@@ -959,6 +1137,8 @@ import {createTopBar} from './topBar';
 import {showLoading, hideLoading} from './loading';
 import {createTodoInput} from './todoInput';
 import {createTodoList} from './todoList';
+import {createButton} from './button';
+import {createError, showError} from './error';
 
 export const app = async (root) => {
   const appElement = document.createElement('div');
@@ -968,19 +1148,26 @@ export const app = async (root) => {
   // Show loading spinner
   const loadingDiv = showLoading(appElement);
 
-  // Wait for the database to be ready
-  const database = await databaseReady;
+  try {
+    const database = await databaseReady;
+    const todoInputContainer = createTodoInput(database);
+    appElement.appendChild(todoInputContainer);
 
-  // Remove loading spinner
-  hideLoading(loadingDiv);
+    const input = todoInputContainer.querySelector('input');
+    input.focus();
 
-  const todoInputContainer = createTodoInput(database);
-  appElement.appendChild(todoInputContainer);
-
-  const input = todoInputContainer.querySelector('input');
-  input.focus();
-
-  appElement.appendChild(createTodoList(database));
+    appElement.appendChild(createTodoList(database));
+  } catch (error) {
+    const message = createError();
+    message.id = 'startupError';
+    showError(message, error, 'Could not open your todos.');
+    appElement.append(
+      message,
+      createButton('Retry', () => location.reload(), 'primary'),
+    );
+  } finally {
+    hideLoading(loadingDiv);
+  }
 };
 ",
   "src/button.css": "button {
@@ -997,6 +1184,11 @@ export const app = async (root) => {
 
 button:hover {
   border-color: #7c3aed;
+}
+
+button:disabled {
+  cursor: wait;
+  opacity: 0.6;
 }
 
 button.primary {
@@ -1029,56 +1221,117 @@ export const createButton = (
   return button;
 };
 ",
-  "src/database.js": "import {create} from 'tinyjoin';
+  "src/database.js": "import {create, ClientError} from 'tinyjoin';
 
 export const DATA_DIR = 'opfs://tinyjoin-saved-app-db-v2';
 
 export const createTodosDatabase = async () => {
   const database = await create(DATA_DIR);
 
-  // Create the table, and add the starter todos, only on the first visit.
-  if (!(await hasTodosTable(database))) {
-    await database.exec(\`
-      CREATE TABLE IF NOT EXISTS todos (
-        id TEXT PRIMARY KEY,
-        text TEXT NOT NULL,
-        completed BOOLEAN NOT NULL DEFAULT false,
-        created INTEGER NOT NULL DEFAULT 0
-      )
-    \`);
-    await database.query(
-      \`INSERT INTO todos (id, text, completed, created)
-       VALUES ($1, $2, $3, $4), ($5, $6, $7, $8)\`,
-      ['1', 'Learn TinyJoin', false, 1, '2', 'Build an app', false, 2],
-    );
-  }
+  try {
+    // Create the table, and add the starter todos, only on the first visit.
+    if (!(await hasTodosTable(database))) {
+      await database.exec(\`
+        CREATE TABLE IF NOT EXISTS todos (
+          id TEXT PRIMARY KEY,
+          text TEXT NOT NULL,
+          completed BOOLEAN NOT NULL DEFAULT false,
+          created INTEGER NOT NULL DEFAULT 0
+        )
+      \`);
+      await database.query(
+        \`INSERT INTO todos (id, text, completed, created)
+         VALUES ($1, $2, $3, $4), ($5, $6, $7, $8)\`,
+        ['1', 'Learn TinyJoin', false, 1, '2', 'Build an app', false, 2],
+      );
+    }
 
-  return database;
+    return database;
+  } catch (error) {
+    await database.close().catch(() => undefined);
+    throw error;
+  }
 };
 
 const hasTodosTable = async (database) => {
   try {
     await database.query('SELECT id FROM todos LIMIT 1');
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    if (error instanceof ClientError && error.code === 'TABLE_NOT_FOUND') {
+      return false;
+    }
+    throw error;
   }
 };
 
 export const databaseReady = createTodosDatabase();
+// Startup can reject before the page's load event. app() presents the failure.
+void databaseReady.catch(() => undefined);
 
 addEventListener(
   'pagehide',
-  () => void databaseReady.then((database) => database.close()),
+  () =>
+    void databaseReady
+      .then((database) => database.close())
+      .catch(() => undefined),
   {once: true},
 );
+",
+  "src/error.css": ".error {
+  color: #fca5a5;
+  line-height: 1.5;
+  margin: 0 0 1rem;
+  user-select: text;
+}
+",
+  "src/error.js": "import {ClientError} from 'tinyjoin';
+import './error.css';
+
+export const createError = () => {
+  const element = document.createElement('p');
+  element.className = 'error';
+  element.setAttribute('role', 'alert');
+  element.hidden = true;
+  return element;
+};
+
+export const clearError = (element) => {
+  element.hidden = true;
+  element.textContent = '';
+};
+
+export const showError = (element, error, fallback) => {
+  let message =
+    error instanceof Error ? \`\${fallback} \${error.message}\` : fallback;
+  if (error instanceof ClientError) {
+    if (error.code === 'STORAGE_LOCKED') {
+      message =
+        'This app is already open in another tab. Close the other tab, then select Retry.';
+    } else if (
+      [
+        'RECOVERY_REQUIRED',
+        'STORAGE_COMMIT_OUTCOME_UNKNOWN',
+        'STORAGE_ENGINE_POISONED',
+        'WORKER_ERROR',
+        'WORKER_MESSAGE_ERROR',
+        'WORKER_TERMINATED',
+      ].includes(error.code)
+    ) {
+      message =
+        'The change may have been saved. Reload this page and check your todos before trying again.';
+    }
+  }
+  element.textContent = message;
+  element.hidden = false;
+};
 ",
   "src/index.js": "import {app} from './app';
 
 const root = document.getElementById('root');
 
 addEventListener('load', () => {
-  app(root);
+  void app(root);
 });
 ",
   "src/info.css": "#info {
@@ -1315,47 +1568,68 @@ export const createTitle = () => {
 ",
   "src/todoInput.css": "#todoInput {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
   margin-bottom: 1.5rem;
 }
 
 #todoInput input {
   flex: 1;
+  min-width: 0;
+}
+
+#todoInput .error {
+  flex-basis: 100%;
+  margin: 0;
 }
 ",
   "src/todoInput.js": "import './todoInput.css';
 import {} from './database';
 import {createButton} from './button';
 import {createInput} from './input';
+import {createError, clearError, showError} from './error';
 
 export const createTodoInput = (database) => {
   const container = document.createElement('form');
   container.id = 'todoInput';
 
   const input = createInput('What needs to be done?');
+  const addButton = createButton('Add', null, 'primary', 'submit');
+  const error = createError();
+  let pending = false;
 
-  const addTodo = () => {
+  const addTodo = async () => {
     const text = input.value.trim();
-    if (text) {
-      void database.query(
+    if (!text || pending) {
+      return;
+    }
+    pending = true;
+    input.disabled = true;
+    addButton.disabled = true;
+    clearError(error);
+    try {
+      await database.query(
         \`INSERT INTO todos (id, text, completed, created)
          VALUES ($1, $2, $3, $4)\`,
         [crypto.randomUUID(), text, false, Date.now()],
       );
       input.value = '';
+    } catch (failure) {
+      showError(error, failure, 'Could not add this todo.');
+    } finally {
+      pending = false;
+      input.disabled = false;
+      addButton.disabled = false;
       input.focus();
     }
   };
 
   container.addEventListener('submit', (event) => {
     event.preventDefault();
-    addTodo();
+    void addTodo();
   });
 
-  const addButton = createButton('Add', null, 'primary', 'submit');
-
-  container.appendChild(input);
-  container.appendChild(addButton);
+  container.append(input, addButton, error);
 
   return container;
 };
@@ -1405,7 +1679,7 @@ export const createTodoItem = (id, text, completed, onToggle, onDelete) => {
   checkbox.type = 'checkbox';
   checkbox.checked = completed;
   checkbox.id = \`todo-\${id}\`;
-  checkbox.addEventListener('change', onToggle);
+  checkbox.addEventListener('change', () => onToggle(checkbox));
 
   const label = document.createElement('label');
   label.textContent = text;
@@ -1439,40 +1713,100 @@ export const createTodoItem = (id, text, completed, onToggle, onDelete) => {
   "src/todoList.js": "import './todoList.css';
 import {} from './database';
 import {createTodoItem} from './todoItem';
+import {createError, clearError, showError} from './error';
 
 export const createTodoList = (database) => {
+  const container = document.createElement('div');
+  const error = createError();
   const list = document.createElement('div');
   list.id = 'todoList';
+  container.append(error, list);
+  let pending = false;
+  let mutationFailed = false;
+  let renderGeneration = 0;
+
+  const setDisabled = (disabled) => {
+    list.querySelectorAll('input, button').forEach((control) => {
+      control.disabled = disabled;
+    });
+  };
+
+  const mutate = async (operation, restore) => {
+    if (pending) {
+      return;
+    }
+    pending = true;
+    mutationFailed = false;
+    setDisabled(true);
+    clearError(error);
+    try {
+      await operation();
+    } catch (failure) {
+      restore?.();
+      mutationFailed = true;
+      showError(error, failure, 'Could not save this change.');
+    } finally {
+      // Refresh reads only: a rejected write may already have committed.
+      await render();
+      pending = false;
+      setDisabled(false);
+    }
+  };
 
   const render = async () => {
-    const {rows} = await database.query(
-      'SELECT id, text, completed, created FROM todos ORDER BY created, id',
-    );
-
-    list.innerHTML = '';
-    rows.forEach((todo) => {
-      const item = createTodoItem(
-        todo.id,
-        todo.text,
-        todo.completed,
-        () => {
-          void database.query('UPDATE todos SET completed = $1 WHERE id = $2', [
-            !todo.completed,
-            todo.id,
-          ]);
-        },
-        () => {
-          void database.query('DELETE FROM todos WHERE id = $1', [todo.id]);
-        },
+    const generation = ++renderGeneration;
+    try {
+      const {rows} = await database.query(
+        'SELECT id, text, completed, created FROM todos ORDER BY created, id',
       );
-      list.appendChild(item);
-    });
+      if (generation !== renderGeneration) {
+        return;
+      }
+      if (!mutationFailed) {
+        clearError(error);
+      }
+
+      const items = rows.map((todo) =>
+        createTodoItem(
+          todo.id,
+          todo.text,
+          todo.completed,
+          (checkbox) => {
+            void mutate(
+              () =>
+                database.query(
+                  'UPDATE todos SET completed = $1 WHERE id = $2',
+                  [!todo.completed, todo.id],
+                ),
+              () => {
+                checkbox.checked = todo.completed;
+              },
+            );
+          },
+          () => {
+            void mutate(() =>
+              database.query('DELETE FROM todos WHERE id = $1', [todo.id]),
+            );
+          },
+        ),
+      );
+      list.replaceChildren(...items);
+      setDisabled(pending);
+    } catch (failure) {
+      if (generation === renderGeneration && !mutationFailed) {
+        showError(
+          error,
+          failure,
+          'Could not refresh your todos. Reload to try again.',
+        );
+      }
+    }
   };
 
   database.subscribe({tables: ['todos']}, () => void render());
   void render();
 
-  return list;
+  return container;
 };
 ",
   "src/topBar.css": "#topBar {
@@ -1528,11 +1862,15 @@ lifecycle while adapting the application to the user's requirements.
 
 The database client is opened once in \`src/database.ts\` and shared through
 the \`databaseReady\` promise. Keep that single client: opening a second one for
-the same data is rejected.
+the same persistent database is rejected.
 
 The schema is created before the first read, and the starter rows are only
-inserted when the table is empty. Preserve that ordering so a reload does not
-duplicate or overwrite existing data.
+inserted when the table is first created. An existing empty table stays empty.
+Preserve that ordering so a reload does not duplicate or overwrite existing data.
+
+Await writes, preserve drafts on failure, and keep errors visible. Retry at
+startup reloads the page to create a fresh client. Do not automatically replay
+a failed write: a storage failure can leave its commit outcome uncertain.
 
 ## Key Files
 
@@ -1545,7 +1883,7 @@ duplicate or overwrite existing data.
 
 1. Read \`README.md\` and \`src/database.ts\` before making changes.
 2. Keep application data in TinyJoin rather than duplicating it in UI state.
-3. Use the \`sql\` tagged template or \`$1\` parameter arrays for application
+3. Use \`$1\` parameter arrays for application
    values. Do not concatenate user input into SQL.
 4. Generate stable row identifiers in application code.
 5. Keep the schema safe to run again when the app reloads.
@@ -1610,6 +1948,10 @@ to the \`todos\` table so that every change re-renders the list.
 
 **Persistence** is not enabled. Your todos are kept for the current visit and
 start fresh after a reload.
+
+Startup failures replace the loading spinner with a message and **Retry**.
+Failed changes show an error; a failed addition keeps the text you entered.
+Writes are not automatically retried.
 
 ## Learn More
 
@@ -1714,6 +2056,8 @@ import {createTopBar} from './topBar';
 import {showLoading, hideLoading} from './loading';
 import {createTodoInput} from './todoInput';
 import {createTodoList} from './todoList';
+import {createButton} from './button';
+import {createError, showError} from './error';
 
 export const app = async (root: HTMLElement) => {
   const appElement = document.createElement('div');
@@ -1723,19 +2067,26 @@ export const app = async (root: HTMLElement) => {
   // Show loading spinner
   const loadingDiv = showLoading(appElement);
 
-  // Wait for the database to be ready
-  const database = await databaseReady;
+  try {
+    const database = await databaseReady;
+    const todoInputContainer = createTodoInput(database);
+    appElement.appendChild(todoInputContainer);
 
-  // Remove loading spinner
-  hideLoading(loadingDiv);
+    const input = todoInputContainer.querySelector('input')!;
+    input.focus();
 
-  const todoInputContainer = createTodoInput(database);
-  appElement.appendChild(todoInputContainer);
-
-  const input = todoInputContainer.querySelector('input')!;
-  input.focus();
-
-  appElement.appendChild(createTodoList(database));
+    appElement.appendChild(createTodoList(database));
+  } catch (error) {
+    const message = createError();
+    message.id = 'startupError';
+    showError(message, error, 'Could not open your todos.');
+    appElement.append(
+      message,
+      createButton('Retry', () => location.reload(), 'primary'),
+    );
+  } finally {
+    hideLoading(loadingDiv);
+  }
 };
 ",
   "src/button.css": "button {
@@ -1752,6 +2103,11 @@ export const app = async (root: HTMLElement) => {
 
 button:hover {
   border-color: #7c3aed;
+}
+
+button:disabled {
+  cursor: wait;
+  opacity: 0.6;
 }
 
 button.primary {
@@ -1784,7 +2140,7 @@ export const createButton = (
   return button;
 };
 ",
-  "src/database.ts": "import {create, type Client} from 'tinyjoin';
+  "src/database.ts": "import {create, ClientError, type Client} from 'tinyjoin';
 
 export type TodoRow = {
   id: string;
@@ -1800,49 +2156,114 @@ export const DATA_DIR = 'memory://';
 export const createTodosDatabase = async (): Promise<TodosDatabase> => {
   const database = await create(DATA_DIR);
 
-  // Create the table, and add the starter todos, only on the first visit.
-  if (!(await hasTodosTable(database))) {
-    await database.exec(\`
-      CREATE TABLE IF NOT EXISTS todos (
-        id TEXT PRIMARY KEY,
-        text TEXT NOT NULL,
-        completed BOOLEAN NOT NULL DEFAULT false,
-        created INTEGER NOT NULL DEFAULT 0
-      )
-    \`);
-    await database.query(
-      \`INSERT INTO todos (id, text, completed, created)
-       VALUES ($1, $2, $3, $4), ($5, $6, $7, $8)\`,
-      ['1', 'Learn TinyJoin', false, 1, '2', 'Build an app', false, 2],
-    );
-  }
+  try {
+    // Create the table, and add the starter todos, only on the first visit.
+    if (!(await hasTodosTable(database))) {
+      await database.exec(\`
+        CREATE TABLE IF NOT EXISTS todos (
+          id TEXT PRIMARY KEY,
+          text TEXT NOT NULL,
+          completed BOOLEAN NOT NULL DEFAULT false,
+          created INTEGER NOT NULL DEFAULT 0
+        )
+      \`);
+      await database.query(
+        \`INSERT INTO todos (id, text, completed, created)
+         VALUES ($1, $2, $3, $4), ($5, $6, $7, $8)\`,
+        ['1', 'Learn TinyJoin', false, 1, '2', 'Build an app', false, 2],
+      );
+    }
 
-  return database;
+    return database;
+  } catch (error) {
+    await database.close().catch(() => undefined);
+    throw error;
+  }
 };
 
 const hasTodosTable = async (database: TodosDatabase): Promise<boolean> => {
   try {
     await database.query('SELECT id FROM todos LIMIT 1');
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    if (error instanceof ClientError && error.code === 'TABLE_NOT_FOUND') {
+      return false;
+    }
+    throw error;
   }
 };
 
 export const databaseReady = createTodosDatabase();
+// Startup can reject before the page's load event. app() presents the failure.
+void databaseReady.catch(() => undefined);
 
 addEventListener(
   'pagehide',
-  () => void databaseReady.then((database) => database.close()),
+  () =>
+    void databaseReady
+      .then((database) => database.close())
+      .catch(() => undefined),
   {once: true},
 );
+",
+  "src/error.css": ".error {
+  color: #fca5a5;
+  line-height: 1.5;
+  margin: 0 0 1rem;
+  user-select: text;
+}
+",
+  "src/error.ts": "import {ClientError} from 'tinyjoin';
+import './error.css';
+
+export const createError = (): HTMLParagraphElement => {
+  const element = document.createElement('p');
+  element.className = 'error';
+  element.setAttribute('role', 'alert');
+  element.hidden = true;
+  return element;
+};
+
+export const clearError = (element: HTMLElement): void => {
+  element.hidden = true;
+  element.textContent = '';
+};
+
+export const showError = (
+  element: HTMLElement,
+  error: unknown,
+  fallback: string,
+): void => {
+  let message =
+    error instanceof Error ? \`\${fallback} \${error.message}\` : fallback;
+  if (error instanceof ClientError) {
+    if (error.code === 'STORAGE_LOCKED') {
+      message =
+        'This app is already open in another tab. Close the other tab, then select Retry.';
+    } else if (
+      [
+        'RECOVERY_REQUIRED',
+        'STORAGE_COMMIT_OUTCOME_UNKNOWN',
+        'STORAGE_ENGINE_POISONED',
+        'WORKER_ERROR',
+        'WORKER_MESSAGE_ERROR',
+        'WORKER_TERMINATED',
+      ].includes(error.code)
+    ) {
+      message =
+        'The change may have been saved. Reload this page and check your todos before trying again.';
+    }
+  }
+  element.textContent = message;
+  element.hidden = false;
+};
 ",
   "src/index.ts": "import {app} from './app';
 
 const root = document.getElementById('root')!;
 
 addEventListener('load', () => {
-  app(root);
+  void app(root);
 });
 ",
   "src/info.css": "#info {
@@ -2087,47 +2508,68 @@ export const createTitle = (): HTMLHeadingElement => {
 ",
   "src/todoInput.css": "#todoInput {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
   margin-bottom: 1.5rem;
 }
 
 #todoInput input {
   flex: 1;
+  min-width: 0;
+}
+
+#todoInput .error {
+  flex-basis: 100%;
+  margin: 0;
 }
 ",
   "src/todoInput.ts": "import './todoInput.css';
 import {type TodosDatabase} from './database';
 import {createButton} from './button';
 import {createInput} from './input';
+import {createError, clearError, showError} from './error';
 
 export const createTodoInput = (database: TodosDatabase): HTMLFormElement => {
   const container = document.createElement('form');
   container.id = 'todoInput';
 
   const input = createInput('What needs to be done?');
+  const addButton = createButton('Add', null, 'primary', 'submit');
+  const error = createError();
+  let pending = false;
 
-  const addTodo = () => {
+  const addTodo = async () => {
     const text = input.value.trim();
-    if (text) {
-      void database.query(
+    if (!text || pending) {
+      return;
+    }
+    pending = true;
+    input.disabled = true;
+    addButton.disabled = true;
+    clearError(error);
+    try {
+      await database.query(
         \`INSERT INTO todos (id, text, completed, created)
          VALUES ($1, $2, $3, $4)\`,
         [crypto.randomUUID(), text, false, Date.now()],
       );
       input.value = '';
+    } catch (failure) {
+      showError(error, failure, 'Could not add this todo.');
+    } finally {
+      pending = false;
+      input.disabled = false;
+      addButton.disabled = false;
       input.focus();
     }
   };
 
   container.addEventListener('submit', (event) => {
     event.preventDefault();
-    addTodo();
+    void addTodo();
   });
 
-  const addButton = createButton('Add', null, 'primary', 'submit');
-
-  container.appendChild(input);
-  container.appendChild(addButton);
+  container.append(input, addButton, error);
 
   return container;
 };
@@ -2173,7 +2615,7 @@ export const createTodoItem = (
   id: string,
   text: string,
   completed: boolean,
-  onToggle: () => void,
+  onToggle: (checkbox: HTMLInputElement) => void,
   onDelete: () => void,
 ): HTMLDivElement => {
   const item = document.createElement('div');
@@ -2183,7 +2625,7 @@ export const createTodoItem = (
   checkbox.type = 'checkbox';
   checkbox.checked = completed;
   checkbox.id = \`todo-\${id}\`;
-  checkbox.addEventListener('change', onToggle);
+  checkbox.addEventListener('change', () => onToggle(checkbox));
 
   const label = document.createElement('label');
   label.textContent = text;
@@ -2217,40 +2659,105 @@ export const createTodoItem = (
   "src/todoList.ts": "import './todoList.css';
 import {type TodosDatabase, type TodoRow} from './database';
 import {createTodoItem} from './todoItem';
+import {createError, clearError, showError} from './error';
 
 export const createTodoList = (database: TodosDatabase): HTMLDivElement => {
+  const container = document.createElement('div');
+  const error = createError();
   const list = document.createElement('div');
   list.id = 'todoList';
+  container.append(error, list);
+  let pending = false;
+  let mutationFailed = false;
+  let renderGeneration = 0;
+
+  const setDisabled = (disabled: boolean) => {
+    list
+      .querySelectorAll<HTMLInputElement | HTMLButtonElement>('input, button')
+      .forEach((control) => {
+        control.disabled = disabled;
+      });
+  };
+
+  const mutate = async (
+    operation: () => Promise<unknown>,
+    restore?: () => void,
+  ) => {
+    if (pending) {
+      return;
+    }
+    pending = true;
+    mutationFailed = false;
+    setDisabled(true);
+    clearError(error);
+    try {
+      await operation();
+    } catch (failure) {
+      restore?.();
+      mutationFailed = true;
+      showError(error, failure, 'Could not save this change.');
+    } finally {
+      // Refresh reads only: a rejected write may already have committed.
+      await render();
+      pending = false;
+      setDisabled(false);
+    }
+  };
 
   const render = async () => {
-    const {rows} = await database.query<TodoRow>(
-      'SELECT id, text, completed, created FROM todos ORDER BY created, id',
-    );
-
-    list.innerHTML = '';
-    rows.forEach((todo) => {
-      const item = createTodoItem(
-        todo.id,
-        todo.text,
-        todo.completed,
-        () => {
-          void database.query('UPDATE todos SET completed = $1 WHERE id = $2', [
-            !todo.completed,
-            todo.id,
-          ]);
-        },
-        () => {
-          void database.query('DELETE FROM todos WHERE id = $1', [todo.id]);
-        },
+    const generation = ++renderGeneration;
+    try {
+      const {rows} = await database.query<TodoRow>(
+        'SELECT id, text, completed, created FROM todos ORDER BY created, id',
       );
-      list.appendChild(item);
-    });
+      if (generation !== renderGeneration) {
+        return;
+      }
+      if (!mutationFailed) {
+        clearError(error);
+      }
+
+      const items = rows.map((todo) =>
+        createTodoItem(
+          todo.id,
+          todo.text,
+          todo.completed,
+          (checkbox) => {
+            void mutate(
+              () =>
+                database.query(
+                  'UPDATE todos SET completed = $1 WHERE id = $2',
+                  [!todo.completed, todo.id],
+                ),
+              () => {
+                checkbox.checked = todo.completed;
+              },
+            );
+          },
+          () => {
+            void mutate(() =>
+              database.query('DELETE FROM todos WHERE id = $1', [todo.id]),
+            );
+          },
+        ),
+      );
+      list.replaceChildren(...items);
+      setDisabled(pending);
+    } catch (failure) {
+      if (generation === renderGeneration && !mutationFailed) {
+        showError(
+          error,
+          failure,
+          'Could not refresh your todos. Reload to try again.',
+        );
+      }
+    }
   };
 
   database.subscribe({tables: ['todos']}, () => void render());
   void render();
 
-  return list;
+  return container;
 };
 ",
   "src/topBar.css": "#topBar {
@@ -2322,11 +2829,16 @@ lifecycle while adapting the application to the user's requirements.
 
 The database client is opened once in \`src/database.ts\` and shared through
 the \`databaseReady\` promise. Keep that single client: opening a second one for
-the same data is rejected.
+the same persistent database is rejected. If another tab owns
+the database, startup shows an error; close that tab and use Retry.
 
 The schema is created before the first read, and the starter rows are only
-inserted when the table is empty. Preserve that ordering so a reload does not
-duplicate or overwrite existing data.
+inserted when the table is first created. An existing empty table stays empty.
+Preserve that ordering so a reload does not duplicate or overwrite existing data.
+
+Await writes, preserve drafts on failure, and keep errors visible. Retry at
+startup reloads the page to create a fresh client. Do not automatically replay
+a failed write: a storage failure can leave its commit outcome uncertain.
 
 ## Key Files
 
@@ -2339,7 +2851,7 @@ duplicate or overwrite existing data.
 
 1. Read \`README.md\` and \`src/database.ts\` before making changes.
 2. Keep application data in TinyJoin rather than duplicating it in UI state.
-3. Use the \`sql\` tagged template or \`$1\` parameter arrays for application
+3. Use \`$1\` parameter arrays for application
    values. Do not concatenate user input into SQL.
 4. Generate stable row identifiers in application code.
 5. Keep the schema safe to run again when the app reloads.
@@ -2403,7 +2915,16 @@ ordinary SQL queries, writes them with parameterized statements, and subscribes
 to the \`todos\` table so that every change re-renders the list.
 
 **Persistence** is enabled. Your data is automatically saved and restored when
-you reload the page.
+you reload the page. Open this app in one tab at a time. If another tab has
+the database open, close it and select **Retry** on the startup error.
+
+The browser can clear or evict saved data, so keep a separate copy of anything
+irreplaceable. Deleting all todos leaves the list empty after a reload; the
+example rows are added only when the table is first created.
+
+Startup failures replace the loading spinner with a message and **Retry**.
+Failed changes show an error; a failed addition keeps the text you entered.
+Writes are not automatically retried.
 
 ## Learn More
 
@@ -2508,6 +3029,8 @@ import {createTopBar} from './topBar';
 import {showLoading, hideLoading} from './loading';
 import {createTodoInput} from './todoInput';
 import {createTodoList} from './todoList';
+import {createButton} from './button';
+import {createError, showError} from './error';
 
 export const app = async (root: HTMLElement) => {
   const appElement = document.createElement('div');
@@ -2517,19 +3040,26 @@ export const app = async (root: HTMLElement) => {
   // Show loading spinner
   const loadingDiv = showLoading(appElement);
 
-  // Wait for the database to be ready
-  const database = await databaseReady;
+  try {
+    const database = await databaseReady;
+    const todoInputContainer = createTodoInput(database);
+    appElement.appendChild(todoInputContainer);
 
-  // Remove loading spinner
-  hideLoading(loadingDiv);
+    const input = todoInputContainer.querySelector('input')!;
+    input.focus();
 
-  const todoInputContainer = createTodoInput(database);
-  appElement.appendChild(todoInputContainer);
-
-  const input = todoInputContainer.querySelector('input')!;
-  input.focus();
-
-  appElement.appendChild(createTodoList(database));
+    appElement.appendChild(createTodoList(database));
+  } catch (error) {
+    const message = createError();
+    message.id = 'startupError';
+    showError(message, error, 'Could not open your todos.');
+    appElement.append(
+      message,
+      createButton('Retry', () => location.reload(), 'primary'),
+    );
+  } finally {
+    hideLoading(loadingDiv);
+  }
 };
 ",
   "src/button.css": "button {
@@ -2546,6 +3076,11 @@ export const app = async (root: HTMLElement) => {
 
 button:hover {
   border-color: #7c3aed;
+}
+
+button:disabled {
+  cursor: wait;
+  opacity: 0.6;
 }
 
 button.primary {
@@ -2578,7 +3113,7 @@ export const createButton = (
   return button;
 };
 ",
-  "src/database.ts": "import {create, type Client} from 'tinyjoin';
+  "src/database.ts": "import {create, ClientError, type Client} from 'tinyjoin';
 
 export type TodoRow = {
   id: string;
@@ -2594,49 +3129,114 @@ export const DATA_DIR = 'opfs://tinyjoin-saved-app-db-v2';
 export const createTodosDatabase = async (): Promise<TodosDatabase> => {
   const database = await create(DATA_DIR);
 
-  // Create the table, and add the starter todos, only on the first visit.
-  if (!(await hasTodosTable(database))) {
-    await database.exec(\`
-      CREATE TABLE IF NOT EXISTS todos (
-        id TEXT PRIMARY KEY,
-        text TEXT NOT NULL,
-        completed BOOLEAN NOT NULL DEFAULT false,
-        created INTEGER NOT NULL DEFAULT 0
-      )
-    \`);
-    await database.query(
-      \`INSERT INTO todos (id, text, completed, created)
-       VALUES ($1, $2, $3, $4), ($5, $6, $7, $8)\`,
-      ['1', 'Learn TinyJoin', false, 1, '2', 'Build an app', false, 2],
-    );
-  }
+  try {
+    // Create the table, and add the starter todos, only on the first visit.
+    if (!(await hasTodosTable(database))) {
+      await database.exec(\`
+        CREATE TABLE IF NOT EXISTS todos (
+          id TEXT PRIMARY KEY,
+          text TEXT NOT NULL,
+          completed BOOLEAN NOT NULL DEFAULT false,
+          created INTEGER NOT NULL DEFAULT 0
+        )
+      \`);
+      await database.query(
+        \`INSERT INTO todos (id, text, completed, created)
+         VALUES ($1, $2, $3, $4), ($5, $6, $7, $8)\`,
+        ['1', 'Learn TinyJoin', false, 1, '2', 'Build an app', false, 2],
+      );
+    }
 
-  return database;
+    return database;
+  } catch (error) {
+    await database.close().catch(() => undefined);
+    throw error;
+  }
 };
 
 const hasTodosTable = async (database: TodosDatabase): Promise<boolean> => {
   try {
     await database.query('SELECT id FROM todos LIMIT 1');
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    if (error instanceof ClientError && error.code === 'TABLE_NOT_FOUND') {
+      return false;
+    }
+    throw error;
   }
 };
 
 export const databaseReady = createTodosDatabase();
+// Startup can reject before the page's load event. app() presents the failure.
+void databaseReady.catch(() => undefined);
 
 addEventListener(
   'pagehide',
-  () => void databaseReady.then((database) => database.close()),
+  () =>
+    void databaseReady
+      .then((database) => database.close())
+      .catch(() => undefined),
   {once: true},
 );
+",
+  "src/error.css": ".error {
+  color: #fca5a5;
+  line-height: 1.5;
+  margin: 0 0 1rem;
+  user-select: text;
+}
+",
+  "src/error.ts": "import {ClientError} from 'tinyjoin';
+import './error.css';
+
+export const createError = (): HTMLParagraphElement => {
+  const element = document.createElement('p');
+  element.className = 'error';
+  element.setAttribute('role', 'alert');
+  element.hidden = true;
+  return element;
+};
+
+export const clearError = (element: HTMLElement): void => {
+  element.hidden = true;
+  element.textContent = '';
+};
+
+export const showError = (
+  element: HTMLElement,
+  error: unknown,
+  fallback: string,
+): void => {
+  let message =
+    error instanceof Error ? \`\${fallback} \${error.message}\` : fallback;
+  if (error instanceof ClientError) {
+    if (error.code === 'STORAGE_LOCKED') {
+      message =
+        'This app is already open in another tab. Close the other tab, then select Retry.';
+    } else if (
+      [
+        'RECOVERY_REQUIRED',
+        'STORAGE_COMMIT_OUTCOME_UNKNOWN',
+        'STORAGE_ENGINE_POISONED',
+        'WORKER_ERROR',
+        'WORKER_MESSAGE_ERROR',
+        'WORKER_TERMINATED',
+      ].includes(error.code)
+    ) {
+      message =
+        'The change may have been saved. Reload this page and check your todos before trying again.';
+    }
+  }
+  element.textContent = message;
+  element.hidden = false;
+};
 ",
   "src/index.ts": "import {app} from './app';
 
 const root = document.getElementById('root')!;
 
 addEventListener('load', () => {
-  app(root);
+  void app(root);
 });
 ",
   "src/info.css": "#info {
@@ -2881,47 +3481,68 @@ export const createTitle = (): HTMLHeadingElement => {
 ",
   "src/todoInput.css": "#todoInput {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
   margin-bottom: 1.5rem;
 }
 
 #todoInput input {
   flex: 1;
+  min-width: 0;
+}
+
+#todoInput .error {
+  flex-basis: 100%;
+  margin: 0;
 }
 ",
   "src/todoInput.ts": "import './todoInput.css';
 import {type TodosDatabase} from './database';
 import {createButton} from './button';
 import {createInput} from './input';
+import {createError, clearError, showError} from './error';
 
 export const createTodoInput = (database: TodosDatabase): HTMLFormElement => {
   const container = document.createElement('form');
   container.id = 'todoInput';
 
   const input = createInput('What needs to be done?');
+  const addButton = createButton('Add', null, 'primary', 'submit');
+  const error = createError();
+  let pending = false;
 
-  const addTodo = () => {
+  const addTodo = async () => {
     const text = input.value.trim();
-    if (text) {
-      void database.query(
+    if (!text || pending) {
+      return;
+    }
+    pending = true;
+    input.disabled = true;
+    addButton.disabled = true;
+    clearError(error);
+    try {
+      await database.query(
         \`INSERT INTO todos (id, text, completed, created)
          VALUES ($1, $2, $3, $4)\`,
         [crypto.randomUUID(), text, false, Date.now()],
       );
       input.value = '';
+    } catch (failure) {
+      showError(error, failure, 'Could not add this todo.');
+    } finally {
+      pending = false;
+      input.disabled = false;
+      addButton.disabled = false;
       input.focus();
     }
   };
 
   container.addEventListener('submit', (event) => {
     event.preventDefault();
-    addTodo();
+    void addTodo();
   });
 
-  const addButton = createButton('Add', null, 'primary', 'submit');
-
-  container.appendChild(input);
-  container.appendChild(addButton);
+  container.append(input, addButton, error);
 
   return container;
 };
@@ -2967,7 +3588,7 @@ export const createTodoItem = (
   id: string,
   text: string,
   completed: boolean,
-  onToggle: () => void,
+  onToggle: (checkbox: HTMLInputElement) => void,
   onDelete: () => void,
 ): HTMLDivElement => {
   const item = document.createElement('div');
@@ -2977,7 +3598,7 @@ export const createTodoItem = (
   checkbox.type = 'checkbox';
   checkbox.checked = completed;
   checkbox.id = \`todo-\${id}\`;
-  checkbox.addEventListener('change', onToggle);
+  checkbox.addEventListener('change', () => onToggle(checkbox));
 
   const label = document.createElement('label');
   label.textContent = text;
@@ -3011,40 +3632,105 @@ export const createTodoItem = (
   "src/todoList.ts": "import './todoList.css';
 import {type TodosDatabase, type TodoRow} from './database';
 import {createTodoItem} from './todoItem';
+import {createError, clearError, showError} from './error';
 
 export const createTodoList = (database: TodosDatabase): HTMLDivElement => {
+  const container = document.createElement('div');
+  const error = createError();
   const list = document.createElement('div');
   list.id = 'todoList';
+  container.append(error, list);
+  let pending = false;
+  let mutationFailed = false;
+  let renderGeneration = 0;
+
+  const setDisabled = (disabled: boolean) => {
+    list
+      .querySelectorAll<HTMLInputElement | HTMLButtonElement>('input, button')
+      .forEach((control) => {
+        control.disabled = disabled;
+      });
+  };
+
+  const mutate = async (
+    operation: () => Promise<unknown>,
+    restore?: () => void,
+  ) => {
+    if (pending) {
+      return;
+    }
+    pending = true;
+    mutationFailed = false;
+    setDisabled(true);
+    clearError(error);
+    try {
+      await operation();
+    } catch (failure) {
+      restore?.();
+      mutationFailed = true;
+      showError(error, failure, 'Could not save this change.');
+    } finally {
+      // Refresh reads only: a rejected write may already have committed.
+      await render();
+      pending = false;
+      setDisabled(false);
+    }
+  };
 
   const render = async () => {
-    const {rows} = await database.query<TodoRow>(
-      'SELECT id, text, completed, created FROM todos ORDER BY created, id',
-    );
-
-    list.innerHTML = '';
-    rows.forEach((todo) => {
-      const item = createTodoItem(
-        todo.id,
-        todo.text,
-        todo.completed,
-        () => {
-          void database.query('UPDATE todos SET completed = $1 WHERE id = $2', [
-            !todo.completed,
-            todo.id,
-          ]);
-        },
-        () => {
-          void database.query('DELETE FROM todos WHERE id = $1', [todo.id]);
-        },
+    const generation = ++renderGeneration;
+    try {
+      const {rows} = await database.query<TodoRow>(
+        'SELECT id, text, completed, created FROM todos ORDER BY created, id',
       );
-      list.appendChild(item);
-    });
+      if (generation !== renderGeneration) {
+        return;
+      }
+      if (!mutationFailed) {
+        clearError(error);
+      }
+
+      const items = rows.map((todo) =>
+        createTodoItem(
+          todo.id,
+          todo.text,
+          todo.completed,
+          (checkbox) => {
+            void mutate(
+              () =>
+                database.query(
+                  'UPDATE todos SET completed = $1 WHERE id = $2',
+                  [!todo.completed, todo.id],
+                ),
+              () => {
+                checkbox.checked = todo.completed;
+              },
+            );
+          },
+          () => {
+            void mutate(() =>
+              database.query('DELETE FROM todos WHERE id = $1', [todo.id]),
+            );
+          },
+        ),
+      );
+      list.replaceChildren(...items);
+      setDisabled(pending);
+    } catch (failure) {
+      if (generation === renderGeneration && !mutationFailed) {
+        showError(
+          error,
+          failure,
+          'Could not refresh your todos. Reload to try again.',
+        );
+      }
+    }
   };
 
   database.subscribe({tables: ['todos']}, () => void render());
   void render();
 
-  return list;
+  return container;
 };
 ",
   "src/topBar.css": "#topBar {

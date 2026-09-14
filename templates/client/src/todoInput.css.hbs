@@ -1,9 +1,16 @@
 #todoInput {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
   margin-bottom: 1.5rem;
 }
 
 #todoInput input {
   flex: 1;
+  min-width: 0;
+}
+
+#todoInput .error {
+  flex-basis: 100%;
+  margin: 0;
 }

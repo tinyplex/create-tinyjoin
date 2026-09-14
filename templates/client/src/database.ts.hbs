@@ -1,4 +1,4 @@
-import {create, type Client} from 'tinyjoin';
+import {create, ClientError, type Client} from 'tinyjoin';
 
 export type TodoRow = {
   id: string;
@@ -18,39 +18,49 @@ export const DATA_DIR = 'memory://';
 export const createTodosDatabase = async (): Promise<TodosDatabase> => {
   const database = await create(DATA_DIR);
 
-  // Create the table, and add the starter todos, only on the first visit.
-  if (!(await hasTodosTable(database))) {
-    await database.exec(`
-      CREATE TABLE IF NOT EXISTS todos (
-        id TEXT PRIMARY KEY,
-        text TEXT NOT NULL,
-        completed BOOLEAN NOT NULL DEFAULT false,
-        created INTEGER NOT NULL DEFAULT 0
-      )
-    `);
-    await database.query(
-      `INSERT INTO todos (id, text, completed, created)
-       VALUES ($1, $2, $3, $4), ($5, $6, $7, $8)`,
-      ['1', 'Learn TinyJoin', false, 1, '2', 'Build an app', false, 2],
-    );
-  }
+  try {
+    // Create the table, and add the starter todos, only on the first visit.
+    if (!(await hasTodosTable(database))) {
+      await database.exec(`
+        CREATE TABLE IF NOT EXISTS todos (
+          id TEXT PRIMARY KEY,
+          text TEXT NOT NULL,
+          completed BOOLEAN NOT NULL DEFAULT false,
+          created INTEGER NOT NULL DEFAULT 0
+        )
+      `);
+      await database.query(
+        `INSERT INTO todos (id, text, completed, created)
+         VALUES ($1, $2, $3, $4), ($5, $6, $7, $8)`,
+        ['1', 'Learn TinyJoin', false, 1, '2', 'Build an app', false, 2],
+      );
+    }
 
-  return database;
+    return database;
+  } catch (error) {
+    await database.close().catch(() => undefined);
+    throw error;
+  }
 };
 
 const hasTodosTable = async (database: TodosDatabase): Promise<boolean> => {
   try {
     await database.query('SELECT id FROM todos LIMIT 1');
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    if (error instanceof ClientError && error.code === 'TABLE_NOT_FOUND') {
+      return false;
+    }
+    throw error;
   }
 };
 
 export const databaseReady = createTodosDatabase();
+// Startup can reject before the page's load event. app() presents the failure.
+void databaseReady.catch(() => undefined);
 
 addEventListener(
   'pagehide',
-  () => void databaseReady.then((database) => database.close()),
+  () => void databaseReady.then((database) => database.close()).catch(() => undefined),
   {once: true},
 );

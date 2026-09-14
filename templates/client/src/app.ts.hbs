@@ -3,6 +3,8 @@ import {createTopBar} from './topBar';
 import {showLoading, hideLoading} from './loading';
 import {createTodoInput} from './todoInput';
 import {createTodoList} from './todoList';
+import {createButton} from './button';
+import {createError, showError} from './error';
 
 export const app = async (root: HTMLElement) => {
   const appElement = document.createElement('div');
@@ -12,17 +14,24 @@ export const app = async (root: HTMLElement) => {
   // Show loading spinner
   const loadingDiv = showLoading(appElement);
 
-  // Wait for the database to be ready
-  const database = await databaseReady;
+  try {
+    const database = await databaseReady;
+    const todoInputContainer = createTodoInput(database);
+    appElement.appendChild(todoInputContainer);
 
-  // Remove loading spinner
-  hideLoading(loadingDiv);
+    const input = todoInputContainer.querySelector('input')!;
+    input.focus();
 
-  const todoInputContainer = createTodoInput(database);
-  appElement.appendChild(todoInputContainer);
-
-  const input = todoInputContainer.querySelector('input')!;
-  input.focus();
-
-  appElement.appendChild(createTodoList(database));
+    appElement.appendChild(createTodoList(database));
+  } catch (error) {
+    const message = createError();
+    message.id = 'startupError';
+    showError(message, error, 'Could not open your todos.');
+    appElement.append(
+      message,
+      createButton('Retry', () => location.reload(), 'primary'),
+    );
+  } finally {
+    hideLoading(loadingDiv);
+  }
 };

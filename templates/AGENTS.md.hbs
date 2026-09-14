@@ -13,11 +13,16 @@ lifecycle while adapting the application to the user's requirements.
 
 The database client is opened once in `src/database.{{ext}}` and shared through
 the `databaseReady` promise. Keep that single client: opening a second one for
-the same data is rejected.
+the same persistent database is rejected.{{#if usesOpfs}} If another tab owns
+the database, startup shows an error; close that tab and use Retry.{{/if}}
 
 The schema is created before the first read, and the starter rows are only
-inserted when the table is empty. Preserve that ordering so a reload does not
-duplicate or overwrite existing data.
+inserted when the table is first created. An existing empty table stays empty.
+Preserve that ordering so a reload does not duplicate or overwrite existing data.
+
+Await writes, preserve drafts on failure, and keep errors visible. Retry at
+startup reloads the page to create a fresh client. Do not automatically replay
+a failed write: a storage failure can leave its commit outcome uncertain.
 
 ## Key Files
 
@@ -30,7 +35,7 @@ duplicate or overwrite existing data.
 
 1. Read `README.md` and `src/database.{{ext}}` before making changes.
 2. Keep application data in TinyJoin rather than duplicating it in UI state.
-3. Use the `sql` tagged template or `$1` parameter arrays for application
+3. Use `$1` parameter arrays for application
    values. Do not concatenate user input into SQL.
 4. Generate stable row identifiers in application code.
 5. Keep the schema safe to run again when the app reloads.

@@ -189,6 +189,8 @@ const config = {
       style("info"),
       script("loading"),
       style("loading"),
+      script("error"),
+      style("error"),
       script("button"),
       style("button"),
       script("input"),

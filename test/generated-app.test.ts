@@ -44,7 +44,7 @@ describe.sequential("generated apps", () => {
 
     // The JavaScript starters are the same sources with their types removed.
     const javascriptDatabase = await read(generatedApp("js-app"), "database");
-    expect(javascriptDatabase).toContain("import {create} from 'tinyjoin'");
+    expect(javascriptDatabase).toContain("import {create, ClientError} from 'tinyjoin'");
     expect(javascriptDatabase).not.toMatch(/:\s*Promise<|export type /);
     expect(javascriptDatabase).toContain("await create(DATA_DIR)");
 

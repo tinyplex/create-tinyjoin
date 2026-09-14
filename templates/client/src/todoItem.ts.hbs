@@ -5,7 +5,7 @@ export const createTodoItem = (
   id: string,
   text: string,
   completed: boolean,
-  onToggle: () => void,
+  onToggle: (checkbox: HTMLInputElement) => void,
   onDelete: () => void,
 ): HTMLDivElement => {
   const item = document.createElement('div');
@@ -15,7 +15,7 @@ export const createTodoItem = (
   checkbox.type = 'checkbox';
   checkbox.checked = completed;
   checkbox.id = `todo-${id}`;
-  checkbox.addEventListener('change', onToggle);
+  checkbox.addEventListener('change', () => onToggle(checkbox));
 
   const label = document.createElement('label');
   label.textContent = text;

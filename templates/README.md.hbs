@@ -42,11 +42,20 @@ to the `todos` table so that every change re-renders the list.
 
 {{#if usesOpfs}}
 **Persistence** is enabled. Your data is automatically saved and restored when
-you reload the page.
+you reload the page. Open this app in one tab at a time. If another tab has
+the database open, close it and select **Retry** on the startup error.
+
+The browser can clear or evict saved data, so keep a separate copy of anything
+irreplaceable. Deleting all todos leaves the list empty after a reload; the
+example rows are added only when the table is first created.
 {{else}}
 **Persistence** is not enabled. Your todos are kept for the current visit and
 start fresh after a reload.
 {{/if}}
+
+Startup failures replace the loading spinner with a message and **Retry**.
+Failed changes show an error; a failed addition keeps the text you entered.
+Writes are not automatically retried.
 
 ## Learn More
 

@@ -21,6 +21,7 @@ const SCRIPT_MODULES = [
   "app",
   "button",
   "database",
+  "error",
   "index",
   "info",
   "input",
@@ -34,6 +35,7 @@ const SCRIPT_MODULES = [
 
 const STYLE_MODULES = [
   "button",
+  "error",
   "info",
   "input",
   "loading",

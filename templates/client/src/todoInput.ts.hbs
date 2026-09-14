@@ -2,35 +2,49 @@ import './todoInput.css';
 import {type TodosDatabase} from './database';
 import {createButton} from './button';
 import {createInput} from './input';
+import {createError, clearError, showError} from './error';
 
 export const createTodoInput = (database: TodosDatabase): HTMLFormElement => {
   const container = document.createElement('form');
   container.id = 'todoInput';
 
   const input = createInput('What needs to be done?');
+  const addButton = createButton('Add', null, 'primary', 'submit');
+  const error = createError();
+  let pending = false;
 
-  const addTodo = () => {
+  const addTodo = async () => {
     const text = input.value.trim();
-    if (text) {
-      void database.query(
+    if (!text || pending) {
+      return;
+    }
+    pending = true;
+    input.disabled = true;
+    addButton.disabled = true;
+    clearError(error);
+    try {
+      await database.query(
         `INSERT INTO todos (id, text, completed, created)
          VALUES ($1, $2, $3, $4)`,
         [crypto.randomUUID(), text, false, Date.now()],
       );
       input.value = '';
+    } catch (failure) {
+      showError(error, failure, 'Could not add this todo.');
+    } finally {
+      pending = false;
+      input.disabled = false;
+      addButton.disabled = false;
       input.focus();
     }
   };
 
   container.addEventListener('submit', (event) => {
     event.preventDefault();
-    addTodo();
+    void addTodo();
   });
 
-  const addButton = createButton('Add', null, 'primary', 'submit');
-
-  container.appendChild(input);
-  container.appendChild(addButton);
+  container.append(input, addButton, error);
 
   return container;
 };

@@ -1,38 +1,89 @@
 import './todoList.css';
 import {type TodosDatabase, type TodoRow} from './database';
 import {createTodoItem} from './todoItem';
+import {createError, clearError, showError} from './error';
 
 export const createTodoList = (database: TodosDatabase): HTMLDivElement => {
+  const container = document.createElement('div');
+  const error = createError();
   const list = document.createElement('div');
   list.id = 'todoList';
+  container.append(error, list);
+  let pending = false;
+  let mutationFailed = false;
+  let renderGeneration = 0;
+
+  const setDisabled = (disabled: boolean) => {
+    list.querySelectorAll<HTMLInputElement | HTMLButtonElement>('input, button')
+      .forEach((control) => { control.disabled = disabled; });
+  };
+
+  const mutate = async (
+    operation: () => Promise<unknown>,
+    restore?: () => void,
+  ) => {
+    if (pending) {
+      return;
+    }
+    pending = true;
+    mutationFailed = false;
+    setDisabled(true);
+    clearError(error);
+    try {
+      await operation();
+    } catch (failure) {
+      restore?.();
+      mutationFailed = true;
+      showError(error, failure, 'Could not save this change.');
+    } finally {
+      // Refresh reads only: a rejected write may already have committed.
+      await render();
+      pending = false;
+      setDisabled(false);
+    }
+  };
 
   const render = async () => {
-    const {rows} = await database.query<TodoRow>(
-      'SELECT id, text, completed, created FROM todos ORDER BY created, id',
-    );
+    const generation = ++renderGeneration;
+    try {
+      const {rows} = await database.query<TodoRow>(
+        'SELECT id, text, completed, created FROM todos ORDER BY created, id',
+      );
+      if (generation !== renderGeneration) {
+        return;
+      }
+      if (!mutationFailed) {
+        clearError(error);
+      }
 
-    list.innerHTML = '';
-    rows.forEach((todo) => {
-      const item = createTodoItem(
+      const items = rows.map((todo) => createTodoItem(
         todo.id,
         todo.text,
         todo.completed,
-        () => {
-          void database.query('UPDATE todos SET completed = $1 WHERE id = $2', [
-            !todo.completed,
-            todo.id,
-          ]);
+        (checkbox) => {
+          void mutate(
+            () => database.query('UPDATE todos SET completed = $1 WHERE id = $2', [
+              !todo.completed,
+              todo.id,
+            ]),
+            () => { checkbox.checked = todo.completed; },
+          );
         },
         () => {
-          void database.query('DELETE FROM todos WHERE id = $1', [todo.id]);
+          void mutate(() => database.query('DELETE FROM todos WHERE id = $1', [todo.id]));
         },
-      );
-      list.appendChild(item);
-    });
+      ));
+      list.replaceChildren(...items);
+      setDisabled(pending);
+    } catch (failure) {
+      if (generation === renderGeneration && !mutationFailed) {
+        showError(error, failure, 'Could not refresh your todos. Reload to try again.');
+      }
+    }
   };
 
   database.subscribe({tables: ['todos']}, () => void render());
   void render();
 
-  return list;
+  return container;
 };
