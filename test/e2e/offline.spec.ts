@@ -48,3 +48,60 @@ for (const { language, storage, port } of offlineApps) {
     expect(errors).toEqual([]);
   });
 }
+
+test("saved todos remain shared offline when the original tab closes", async ({
+  page,
+  context,
+}) => {
+  const app = offlineApps.find(
+    ({ language, storage }) => language === "typescript" && storage === "opfs",
+  )!;
+  const url = `http://127.0.0.1:${app.port}/`;
+  await page.goto(url);
+  await expect(page.locator(".todoItem")).toHaveCount(2);
+  await page.evaluate("navigator.serviceWorker.ready.then(() => undefined)");
+  expect((await page.reload())?.fromServiceWorker()).toBe(true);
+  await expect(page.locator(".todoItem")).toHaveCount(2);
+
+  const second = await context.newPage();
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  second.on("pageerror", (error) => errors.push(error.message));
+  expect((await second.goto(url))?.fromServiceWorker()).toBe(true);
+  await expect(second.locator(".todoItem")).toHaveCount(2);
+  await context.setOffline(true);
+
+  await page.locator("#todoInput input").fill("From the original offline tab");
+  await page.locator("#todoInput button.primary").click();
+  await expect(
+    second.locator(".todoItem").filter({
+      hasText: "From the original offline tab",
+    }),
+  ).toHaveCount(1);
+  await second.locator("#todoInput input").fill("From the second offline tab");
+  await second.locator("#todoInput button.primary").click();
+  await expect(
+    page.locator(".todoItem").filter({
+      hasText: "From the second offline tab",
+    }),
+  ).toHaveCount(1);
+
+  await page.close();
+  await second
+    .locator("#todoInput input")
+    .fill("After the original tab closed");
+  await second.locator("#todoInput button.primary").click();
+  await expect(second.locator(".todoItem")).toHaveCount(5);
+  expect((await second.reload())?.fromServiceWorker()).toBe(true);
+  await expect(second.locator(".todoItem")).toHaveCount(5);
+  for (const title of [
+    "From the original offline tab",
+    "From the second offline tab",
+    "After the original tab closed",
+  ]) {
+    await expect(
+      second.locator(".todoItem").filter({ hasText: title }),
+    ).toHaveCount(1);
+  }
+  expect(errors).toEqual([]);
+});
