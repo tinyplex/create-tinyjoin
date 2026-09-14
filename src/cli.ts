@@ -129,7 +129,7 @@ const config = {
       storage,
       usesOpfs: storage === "opfs",
       storageName: createStorageName(projectName),
-      tinyjoinDependency: process.env.CREATE_TINYJOIN_DEPENDENCY ?? "^0.0.5",
+      tinyjoinDependency: process.env.CREATE_TINYJOIN_DEPENDENCY ?? "^0.0.6",
     };
   },
   getFiles: (context: TemplateContext): FileConfig[] => {
@@ -255,7 +255,7 @@ function createStorageName(projectName: string): string {
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "") || "app";
   const prefix = "tinyjoin-";
-  const suffix = "-db-v1";
+  const suffix = "-db-v2";
   return `${prefix}${slug.slice(0, 64 - prefix.length - suffix.length)}${suffix}`;
 }
 

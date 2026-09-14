@@ -1031,7 +1031,7 @@ export const createButton = (
 ",
   "src/database.js": "import {create} from 'tinyjoin';
 
-export const DATA_DIR = 'opfs://tinyjoin-saved-app-db-v1';
+export const DATA_DIR = 'opfs://tinyjoin-saved-app-db-v2';
 
 export const createTodosDatabase = async () => {
   const database = await create(DATA_DIR);
@@ -2589,7 +2589,7 @@ export type TodoRow = {
 
 export type TodosDatabase = Client;
 
-export const DATA_DIR = 'opfs://tinyjoin-saved-app-db-v1';
+export const DATA_DIR = 'opfs://tinyjoin-saved-app-db-v2';
 
 export const createTodosDatabase = async (): Promise<TodosDatabase> => {
   const database = await create(DATA_DIR);

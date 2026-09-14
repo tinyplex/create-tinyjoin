@@ -235,7 +235,7 @@ describe("create-tinyjoin CLI", () => {
         const readme = await read(project, "README.md");
 
         expect(database).toContain(
-          "export const DATA_DIR = 'opfs://tinyjoin-saved-app-db-v1'",
+          "export const DATA_DIR = 'opfs://tinyjoin-saved-app-db-v2'",
         );
         expect(readme).toContain("saved and restored when\nyou reload the page");
         expect(readme).not.toMatch(/worker|wasm|opfs/i);
@@ -324,7 +324,7 @@ describe("create-tinyjoin CLI", () => {
     const manifest = JSON.parse(
       await readFile(resolve(output, "published/package.json"), "utf8"),
     );
-    expect(manifest.dependencies.tinyjoin).toBe("^0.0.5");
+    expect(manifest.dependencies.tinyjoin).toBe("^0.0.6");
   });
 
   it("rejects path-like and existing project names", async () => {
