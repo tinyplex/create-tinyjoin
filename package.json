@@ -34,8 +34,9 @@
     "test": "npm run build && vitest run test/cli.test.ts",
     "test:generated": "npm run build && vitest run test/generated-app.test.ts",
     "test:e2e": "npm run test:generated && playwright test",
-    "prePublishPackage": "npm i && npm run spell && npm run typecheck && npm test && npm run test:e2e",
-    "publishPackage": "npm run prePublishPackage && npm publish ./dist"
+    "prePublishPackage": "npm ci && npm run spell && npm run typecheck && npm test && npm run test:e2e",
+    "publishPackage": "npm run prePublishPackage && npm publish ./dist",
+    "test:candidate": "node scripts/test-candidate.mjs"
   },
   "dependencies": {
     "tinycreate": "^1.0.8"
@@ -49,6 +50,6 @@
     "cspell": "^10.2.1",
     "esbuild": "^0.28.1",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   }
 }

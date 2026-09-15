@@ -1,0 +1,61 @@
+name: validate
+
+on:
+  pull_request:
+  push:
+    branches: ['main']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  registry:
+    name: Registry release validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CI: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Setup pinned Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Install Chromium and system dependencies
+        run: npx --no-install playwright install --with-deps chromium
+      # The release gate deliberately leaves CREATE_TINYJOIN_DEPENDENCY unset.
+      # Generated lockfiles must resolve the published registry tarball.
+      - name: Validate generator, all four generated builds, and browser lifecycles
+        shell: bash
+        env:
+          TMPDIR: ${{ runner.temp }}
+        run: |
+          set -o pipefail
+          npm run prePublishPackage 2>&1 | tee "$RUNNER_TEMP/create-tinyjoin-release.log"
+      - name: Audit development and production tooling
+        run: npm audit
+      - name: Inspect publishable package
+        run: npm pack ./dist --dry-run
+      - name: Verify validation did not change the dependency lock
+        run: git diff --exit-code -- package-lock.json
+      - name: Retain release logs and browser traces
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: create-tinyjoin-registry-${{ github.run_attempt }}
+          retention-days: 14
+          if-no-files-found: ignore
+          path: |
+            ${{ runner.temp }}/create-tinyjoin-release.log
+            ${{ runner.temp }}/create-tinyjoin-playwright-results
