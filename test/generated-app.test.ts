@@ -9,14 +9,14 @@ import type { GeneratedApp } from "./paths.js";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const output = generatedTestRoot;
 const npm = process.platform === "win32" ? "npm.cmd" : "npm";
-const tinyjoinDependency = process.env.CREATE_TINYJOIN_DEPENDENCY ?? "^0.0.6";
+const tinyjoinDependency = process.env.CREATE_TINYJOIN_DEPENDENCY ?? "^0.1.0";
 
 beforeAll(async () => {
   await rm(output, { force: true, recursive: true });
   await mkdir(output, { recursive: true });
 });
 
-describe.sequential("generated apps", () => {
+describe("generated apps", { concurrent: false }, () => {
   it("builds every language and storage combination against published TinyJoin", async () => {
     generatedApps.forEach(generate);
 
@@ -99,10 +99,10 @@ async function installBuildAndCheck(app: GeneratedApp): Promise<void> {
     await readFile(resolve(path, "package-lock.json"), "utf8"),
   );
   const lockedTinyJoin = lock.packages?.["node_modules/tinyjoin"];
-  expect(lockedTinyJoin).toMatchObject({ version: "0.0.6" });
+  expect(lockedTinyJoin).toMatchObject({ version: "0.1.0" });
   if (process.env.CREATE_TINYJOIN_DEPENDENCY === undefined) {
     expect(lockedTinyJoin.resolved).toBe(
-      "https://registry.npmjs.org/tinyjoin/-/tinyjoin-0.0.6.tgz",
+      "https://registry.npmjs.org/tinyjoin/-/tinyjoin-0.1.0.tgz",
     );
   }
   expect(
@@ -113,7 +113,7 @@ async function installBuildAndCheck(app: GeneratedApp): Promise<void> {
   );
   expect(installedManifest).toMatchObject({
     name: "tinyjoin",
-    version: "0.0.6",
+    version: "0.1.0",
   });
 
   run(npm, ["run", "build"], path);

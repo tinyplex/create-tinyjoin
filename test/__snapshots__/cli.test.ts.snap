@@ -228,7 +228,7 @@ the same application. See the [offline guide](https://tinyjoin.org/guides/offlin
     "tinyjoin": "9.9.9-test"
   },
   "devDependencies": {
-    "vite": "^8.2.1"
+    "vite": "^8.3.0"
   }
 }
 ",
@@ -1193,7 +1193,7 @@ the same application. See the [offline guide](https://tinyjoin.org/guides/offlin
     "tinyjoin": "9.9.9-test"
   },
   "devDependencies": {
-    "vite": "^8.2.1"
+    "vite": "^8.3.0"
   }
 }
 ",
@@ -2154,7 +2154,7 @@ the same application. See the [offline guide](https://tinyjoin.org/guides/offlin
   },
   "devDependencies": {
     "typescript": "^7.0.2",
-    "vite": "^8.2.1"
+    "vite": "^8.3.0"
   }
 }
 ",
@@ -3169,7 +3169,7 @@ the same application. See the [offline guide](https://tinyjoin.org/guides/offlin
   },
   "devDependencies": {
     "typescript": "^7.0.2",
-    "vite": "^8.2.1"
+    "vite": "^8.3.0"
   }
 }
 ",
