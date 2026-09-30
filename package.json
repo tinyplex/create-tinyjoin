@@ -46,10 +46,10 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",
-    "@types/node": "^26.6.2",
-    "cspell": "^10.3.3",
+    "@types/node": "^26.6.3",
+    "cspell": "^10.3.6",
     "esbuild": "^0.28.2",
     "typescript": "^7.0.2",
-    "vitest": "^5.0.1"
+    "vitest": "^5.0.2"
   }
 }
