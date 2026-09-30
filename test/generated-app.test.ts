@@ -9,7 +9,7 @@ import type { GeneratedApp } from "./paths.js";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const output = generatedTestRoot;
 const npm = process.platform === "win32" ? "npm.cmd" : "npm";
-const tinyjoinDependency = process.env.CREATE_TINYJOIN_DEPENDENCY ?? "^0.3.0";
+const tinyjoinDependency = process.env.CREATE_TINYJOIN_DEPENDENCY ?? "^0.4.0";
 
 beforeAll(async () => {
   await rm(output, { force: true, recursive: true });
@@ -25,7 +25,7 @@ describe("generated apps", { concurrent: false }, () => {
     const todoInput = await read(saved, "todoInput");
     const todoList = await read(saved, "todoList");
     expect(database).toContain(
-      "export const DATA_DIR = 'opfs://tinyjoin-app-db-v2'",
+      "export const DATA_DIR = 'opfs://tinyjoin-app-db-v3'",
     );
     expect(database).toContain("CREATE TABLE todos");
     expect(database).toContain("TABLE_ALREADY_EXISTS");
@@ -99,10 +99,10 @@ async function installBuildAndCheck(app: GeneratedApp): Promise<void> {
     await readFile(resolve(path, "package-lock.json"), "utf8"),
   );
   const lockedTinyJoin = lock.packages?.["node_modules/tinyjoin"];
-  expect(lockedTinyJoin).toMatchObject({ version: "0.3.0" });
+  expect(lockedTinyJoin).toMatchObject({ version: "0.4.0" });
   if (process.env.CREATE_TINYJOIN_DEPENDENCY === undefined) {
     expect(lockedTinyJoin.resolved).toBe(
-      "https://registry.npmjs.org/tinyjoin/-/tinyjoin-0.3.0.tgz",
+      "https://registry.npmjs.org/tinyjoin/-/tinyjoin-0.4.0.tgz",
     );
   }
   expect(
@@ -113,7 +113,7 @@ async function installBuildAndCheck(app: GeneratedApp): Promise<void> {
   );
   expect(installedManifest).toMatchObject({
     name: "tinyjoin",
-    version: "0.3.0",
+    version: "0.4.0",
   });
 
   run(npm, ["run", "build"], path);
