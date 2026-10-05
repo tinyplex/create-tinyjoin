@@ -1,0 +1,8 @@
+import {boolean, integer, pgTable, text} from 'drizzle-orm/pg-core';
+
+export const todos = pgTable('todos', {
+  id: text('id').primaryKey(),
+  text: text('text').notNull(),
+  completed: boolean('completed').notNull().default(false),
+  created: integer('created').notNull().default(0),
+});

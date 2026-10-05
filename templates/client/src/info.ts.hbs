@@ -20,7 +20,13 @@ export const createInfo = (): HTMLDivElement => {
 
   const tooltip = document.createElement('div');
   tooltip.id = 'infoTooltip';
+{{#if drizzle}}
+  tooltip.textContent = `A simple todo list application demonstrating TinyJoin's relational queries with CRUD operations, written with the Drizzle ORM.`;
+{{else if kysely}}
+  tooltip.textContent = `A simple todo list application demonstrating TinyJoin's relational queries with CRUD operations, written with the Kysely query builder.`;
+{{else}}
   tooltip.textContent = `A simple todo list application demonstrating TinyJoin's relational queries with CRUD operations.`;
+{{/if}}
 
   infoIcon.appendChild(tooltip);
   container.appendChild(infoIcon);

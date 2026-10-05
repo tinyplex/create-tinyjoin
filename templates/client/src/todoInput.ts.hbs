@@ -1,10 +1,10 @@
 import './todoInput.css';
-import {type TodosDatabase} from './database';
 import {createButton} from './button';
 import {createInput} from './input';
 import {createError, clearError, showError} from './error';
+import type {Todos} from './todos';
 
-export const createTodoInput = (database: TodosDatabase): HTMLFormElement => {
+export const createTodoInput = (todos: Todos): HTMLFormElement => {
   const container = document.createElement('form');
   container.id = 'todoInput';
 
@@ -23,11 +23,7 @@ export const createTodoInput = (database: TodosDatabase): HTMLFormElement => {
     addButton.disabled = true;
     clearError(error);
     try {
-      await database.query(
-        `INSERT INTO todos (id, text, completed, created)
-         VALUES ($1, $2, $3, $4)`,
-        [crypto.randomUUID(), text, false, Date.now()],
-      );
+      await todos.add(text);
       input.value = '';
     } catch (failure) {
       showError(error, failure, 'Could not add this todo.');

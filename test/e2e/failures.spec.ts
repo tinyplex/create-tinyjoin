@@ -1,8 +1,8 @@
 import { expect, test } from "@playwright/test";
 import { e2eApps } from "../paths.js";
 
-for (const { language, port, ext } of e2eApps) {
-  test(`the ${language} app opens a fresh client after cached-page restoration`, async ({
+for (const { label, port, ext } of e2eApps) {
+  test(`the ${label} app opens a fresh client after cached-page restoration`, async ({
     page,
   }) => {
     const errors: string[] = [];
@@ -29,7 +29,7 @@ for (const { language, port, ext } of e2eApps) {
     expect(errors).toEqual([]);
   });
 
-  test(`the ${language} app shares changes across tabs and survives its first tab closing`, async ({
+  test(`the ${label} app shares changes across tabs and survives its first tab closing`, async ({
     page,
     context,
   }) => {
@@ -60,7 +60,7 @@ for (const { language, port, ext } of e2eApps) {
     expect(errors).toEqual([]);
   });
 
-  test(`the ${language} app seeds once when its first tabs open together`, async ({
+  test(`the ${label} app seeds once when its first tabs open together`, async ({
     page,
     context,
   }) => {
@@ -86,7 +86,7 @@ for (const { language, port, ext } of e2eApps) {
     await expect(second.locator(".todoItem")).toHaveCount(0);
   });
 
-  test(`the ${language} app retains drafts and restores failed changes`, async ({
+  test(`the ${label} app retains drafts and restores failed changes`, async ({
     page,
   }) => {
     const errors: string[] = [];
@@ -107,7 +107,7 @@ for (const { language, port, ext } of e2eApps) {
           return {
             ...database,
             query(sql, ...args) {
-              const command = sql.trim().split(/\\s+/)[0];
+              const command = sql.trim().split(/\\s+/)[0].toUpperCase();
               if (rejected.delete(command)) {
                 return Promise.reject(new Error('Injected ' + command + ' failure'));
               }

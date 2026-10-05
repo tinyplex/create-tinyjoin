@@ -18,6 +18,12 @@ const LANGUAGES = [
   { title: "JavaScript", value: "javascript" },
 ] as const;
 
+const QUERY_OPTIONS = [
+  { title: "SQL", value: "sql" },
+  { title: "Drizzle ORM", value: "drizzle" },
+  { title: "Kysely query builder", value: "kysely" },
+] as const;
+
 const STORAGE_OPTIONS = [
   { title: "Save data across reloads (recommended)", value: "opfs" },
   { title: "Start fresh each time", value: "memory" },
@@ -32,6 +38,11 @@ const optionCatalog = {
       values: LANGUAGES.map(({ value }) => value),
       required: true,
       default: "typescript",
+    },
+    queries: {
+      values: QUERY_OPTIONS.map(({ value }) => value),
+      required: true,
+      default: "sql",
     },
     storage: {
       values: STORAGE_OPTIONS.map(({ value }) => value),
@@ -54,8 +65,8 @@ Interactively scaffold a TinyJoin application:
 
 Run non-interactively:
   npm create tinyjoin@latest -- --non-interactive \\
-    --projectName my-tinyjoin-app --language typescript --storage opfs \\
-    --installAndRun false
+    --projectName my-tinyjoin-app --language typescript --queries sql \\
+    --storage opfs --installAndRun false
 
 Agent and automation commands:
   --list-options  Print the current option catalog as JSON
@@ -87,6 +98,13 @@ const config = {
     },
     {
       type: "select" as const,
+      name: "queries",
+      message: "Queries:",
+      choices: [...QUERY_OPTIONS],
+      initial: 0,
+    },
+    {
+      type: "select" as const,
       name: "storage",
       message: "Todo data:",
       choices: [...STORAGE_OPTIONS],
@@ -112,6 +130,11 @@ const config = {
       "language",
       ["typescript", "javascript"],
     );
+    const queries = normalizeChoice(
+      answers.queries === 0 ? "sql" : (answers.queries ?? "sql"),
+      "queries",
+      ["sql", "drizzle", "kysely"],
+    );
     const storage = normalizeChoice(
       answers.storage === 0 ? "opfs" : (answers.storage ?? "opfs"),
       "storage",
@@ -128,6 +151,9 @@ const config = {
       javascript: !typescript,
       scriptExt: typescript ? "ts" : "js",
       ext: typescript ? "ts" : "js",
+      queries,
+      drizzle: queries === "drizzle",
+      kysely: queries === "kysely",
       storage,
       usesOpfs: storage === "opfs",
       storageName: createStorageName(projectName),
@@ -135,9 +161,9 @@ const config = {
     };
   },
   getFiles: (context: TemplateContext): FileConfig[] => {
-    const { ext, typescript } = context;
-    const script = (name: string): FileConfig => ({
-      template: `client/src/${name}.ts.hbs`,
+    const { ext, typescript, queries, drizzle } = context;
+    const script = (name: string, template = name): FileConfig => ({
+      template: `client/src/${template}.ts.hbs`,
       output: `src/${name}.${ext}`,
       prettier: true,
       transpile: !typescript,
@@ -204,6 +230,9 @@ const config = {
       script("input"),
       style("input"),
       script("database"),
+      // Each choice of queries has its own todos module, behind the same API.
+      script("todos", `todos.${queries}`),
+      ...(drizzle ? [script("schema")] : []),
       script("todoInput"),
       style("todoInput"),
       script("todoList"),

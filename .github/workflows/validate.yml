@@ -36,7 +36,7 @@ jobs:
         run: npx --no-install playwright install --with-deps chromium
       # The release gate deliberately leaves CREATE_TINYJOIN_DEPENDENCY unset.
       # Generated lockfiles must resolve the published registry tarball.
-      - name: Validate generator, all four generated builds, and browser lifecycles
+      - name: Validate generator, all eight generated builds, and browser lifecycles
         shell: bash
         env:
           TMPDIR: ${{ runner.temp }}

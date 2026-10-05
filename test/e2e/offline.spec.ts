@@ -1,8 +1,8 @@
 import { expect, test } from "@playwright/test";
 import { offlineApps } from "../paths.js";
 
-for (const { language, storage, port } of offlineApps) {
-  test(`the ${language} ${storage} production app reopens and works offline`, async ({
+for (const { label, storage, port } of offlineApps) {
+  test(`the ${label} ${storage} production app reopens and works offline`, async ({
     page,
     context,
   }) => {
@@ -58,7 +58,8 @@ test("saved todos remain shared offline when the original tab closes", async ({
   context,
 }) => {
   const app = offlineApps.find(
-    ({ language, storage }) => language === "typescript" && storage === "opfs",
+    ({ language, queries, storage }) =>
+      language === "typescript" && queries === "sql" && storage === "opfs",
   )!;
   const url = `http://127.0.0.1:${app.port}/`;
   await page.goto(url);

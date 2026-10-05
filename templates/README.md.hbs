@@ -1,6 +1,6 @@
 # {{projectName}}
 
-A TinyJoin todo app built with {{#if typescript}}TypeScript{{else}}JavaScript{{/if}} and Vanilla JS.
+A TinyJoin todo app built with {{#if typescript}}TypeScript{{else}}JavaScript{{/if}}{{#if drizzle}}, the Drizzle ORM,{{/if}}{{#if kysely}}, the Kysely query builder,{{/if}} and Vanilla JS.
 
 ## Getting Started
 
@@ -28,7 +28,13 @@ This project is a single web application, built with Vite and
 - **`vite.config.{{ext}}`**: Production build and offline support
 - **`src/index.{{ext}}`**: Entry point that bootstraps the app
 - **`src/app.{{ext}}`**: Main application logic
-- **`src/database.{{ext}}`**: TinyJoin database and `todos` table setup
+- **`src/database.{{ext}}`**: Opens the TinyJoin database and closes it with
+  the page
+- **`src/todos.{{ext}}`**: Sets up the `todos` table with its example rows,
+  and runs the app's queries on it
+{{#if drizzle}}
+- **`src/schema.{{ext}}`**: The Drizzle schema of the `todos` table
+{{/if}}
 - **`src/todoInput.{{ext}}`**, **`src/todoList.{{ext}}`**,
   **`src/todoItem.{{ext}}`**: The todo interface
 - **`src/topBar.{{ext}}`**, **`src/button.{{ext}}`**, **`src/input.{{ext}}`**,
@@ -37,9 +43,33 @@ This project is a single web application, built with Vite and
 #### How It Works
 
 The app uses **TinyJoin** to keep application state in a small relational
-database that runs entirely in the browser. The interface reads rows with
-ordinary SQL queries, writes them with parameterized statements, and subscribes
-to the `todos` table so that every change re-renders the list.
+database that runs entirely in the browser.
+
+{{#if drizzle}}
+The interface reads and writes rows with **Drizzle ORM** queries, which
+TinyJoin runs as SQL, and subscribes to the `todos` table so that every change
+re-renders the list.
+
+As the app starts, `push()` makes the database hold the tables in
+`src/schema.{{ext}}`. Change the schema there, and the next start updates the
+table to match, keeping its rows. See the
+[Drizzle guide](https://tinyjoin.org/guides/drizzle/) for the queries and
+schema changes TinyJoin supports.
+{{else if kysely}}
+The interface reads and writes rows with **Kysely** queries, which TinyJoin
+runs as SQL, and subscribes to the `todos` table so that every change
+re-renders the list.
+
+As the app starts, Kysely's `Migrator` runs the migrations in
+`src/todos.{{ext}}` that the database has not run yet. Add a migration there
+for each change to the schema. See the
+[Kysely guide](https://tinyjoin.org/guides/kysely/) for the queries and schema
+changes TinyJoin supports.
+{{else}}
+The interface reads rows with ordinary SQL queries, writes them with
+parameterized statements, and subscribes to the `todos` table so that every
+change re-renders the list.
+{{/if}}
 
 {{#if usesOpfs}}
 **Persistence** is enabled. Your data is automatically saved and restored when
@@ -76,9 +106,15 @@ does not install an offline copy.
 Deploy the contents of `dist/` to an HTTPS host. Offline loading is set up by
 `tinyjoinOffline()` in `vite.config.{{ext}}`; no extra application code is needed.
 New versions wait until all open tabs close before taking over, so a working
-tab keeps its matching application files. A new deployment does not migrate
-saved database schemas. Offline use does not synchronize data with a server
-or another device.
+tab keeps its matching application files.
+{{#if drizzle}}
+A new version's `push()` then updates the saved schema as it starts.
+{{else if kysely}}
+A new version's migrations then run as it starts.
+{{else}}
+A new deployment does not migrate saved database schemas.
+{{/if}}
+Offline use does not synchronize data with a server or another device.
 
 If you later add your own service worker, use the plugin's manifest mode to
 integrate its cached files with that worker instead of registering two for
@@ -88,3 +124,9 @@ the same application. See the [offline guide](https://tinyjoin.org/guides/offlin
 
 - [TinyJoin Documentation](https://tinyjoin.org)
 - [TinyJoin Demos](https://tinyjoin.org/demos/)
+{{#if drizzle}}
+- [Drizzle ORM Documentation](https://orm.drizzle.team)
+{{/if}}
+{{#if kysely}}
+- [Kysely Documentation](https://kysely.dev)
+{{/if}}

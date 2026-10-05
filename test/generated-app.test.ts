@@ -17,25 +17,29 @@ beforeAll(async () => {
 });
 
 describe("generated apps", { concurrent: false }, () => {
-  it("builds every language and storage combination against published TinyJoin", async () => {
+  it("builds every language, query, and storage combination against published TinyJoin", async () => {
     generatedApps.forEach(generate);
 
     const saved = generatedApp("app");
     const database = await read(saved, "database");
+    const todos = await read(saved, "todos");
     const todoInput = await read(saved, "todoInput");
     const todoList = await read(saved, "todoList");
     expect(database).toContain(
       "export const DATA_DIR = 'opfs://tinyjoin-app-db-v3'",
     );
-    expect(database).toContain("CREATE TABLE todos");
-    expect(database).toContain("TABLE_ALREADY_EXISTS");
+    expect(database).toContain("await initializeTodos(database)");
     expect(database).toContain("database.close()");
-    expect(todoInput).toContain("crypto.randomUUID()");
-    expect(todoInput).toContain("INSERT INTO todos");
-    expect(todoList).toContain("UPDATE todos SET completed = $1 WHERE id = $2");
-    expect(todoList).toContain("DELETE FROM todos WHERE id = $1");
-    expect(todoList).toContain("database.subscribe(");
-    expect(`${database}\n${todoInput}\n${todoList}`).not.toMatch(
+    expect(todos).toContain("CREATE TABLE todos");
+    expect(todos).toContain("TABLE_ALREADY_EXISTS");
+    expect(todos).toContain("crypto.randomUUID()");
+    expect(todos).toContain("INSERT INTO todos");
+    expect(todos).toContain("UPDATE todos SET completed = $1 WHERE id = $2");
+    expect(todos).toContain("DELETE FROM todos WHERE id = $1");
+    expect(todos).toContain("database.subscribe(");
+    expect(todoInput).toContain("todos.add(text)");
+    expect(todoList).toContain("todos.subscribe(");
+    expect(`${database}\n${todos}\n${todoInput}\n${todoList}`).not.toMatch(
       /__tinyjoinDemo|performance\.now|\bjoin\b|group by|revision|invalidation|latency|benchmark|transaction\(/i,
     );
 
@@ -45,19 +49,37 @@ describe("generated apps", { concurrent: false }, () => {
 
     // The JavaScript starters are the same sources with their types removed.
     const javascriptDatabase = await read(generatedApp("js-app"), "database");
-    expect(javascriptDatabase).toContain(
-      "import {create, ClientError} from 'tinyjoin'",
-    );
+    expect(javascriptDatabase).toContain("import {create} from 'tinyjoin'");
     expect(javascriptDatabase).not.toMatch(/:\s*Promise<|export type /);
     expect(javascriptDatabase).toContain("await create(DATA_DIR)");
+    expect(await read(generatedApp("js-app"), "todos")).toContain(
+      "import {ClientError} from 'tinyjoin'",
+    );
+
+    // The query builders' todos modules run the same operations.
+    const drizzle = await read(generatedApp("drizzle-app"), "todos");
+    expect(drizzle).toContain("await push(db, schema)");
+    expect(drizzle).toContain("db.insert(todos)");
+    expect(await read(generatedApp("drizzle-app"), "schema")).toContain(
+      "pgTable('todos'",
+    );
+    const kysely = await read(generatedApp("kysely-app"), "todos");
+    expect(kysely).toContain("new Migrator(");
+    expect(kysely).toContain(".insertInto('todos')");
+    for (const name of ["drizzle-app", "kysely-app"]) {
+      expect(await read(generatedApp(name), "todoList")).toBe(todoList);
+      expect(await read(generatedApp(name), "database")).toBe(
+        database.replace("tinyjoin-app-db-v3", `tinyjoin-${name}-db-v3`),
+      );
+    }
 
     for (const app of generatedApps) {
       await installBuildAndCheck(app);
     }
-  }, 480_000);
+  }, 600_000);
 });
 
-function generate({ name, language, storage }: GeneratedApp): void {
+function generate({ name, language, queries, storage }: GeneratedApp): void {
   run(
     process.execPath,
     [
@@ -67,6 +89,8 @@ function generate({ name, language, storage }: GeneratedApp): void {
       name,
       "--language",
       language,
+      "--queries",
+      queries,
       "--storage",
       storage,
       "--installAndRun",
@@ -81,12 +105,21 @@ function read({ path, ext }: GeneratedApp, module: string): Promise<string> {
   return readFile(resolve(path, `src/${module}.${ext}`), "utf8");
 }
 
+const QUERY_DEPENDENCIES = {
+  sql: {},
+  drizzle: { "drizzle-orm": "^0.45.3" },
+  kysely: { kysely: "^0.29.6" },
+};
+
 async function installBuildAndCheck(app: GeneratedApp): Promise<void> {
-  const { path, language } = app;
+  const { path, language, queries } = app;
   const manifest = JSON.parse(
     await readFile(resolve(path, "package.json"), "utf8"),
   );
-  expect(manifest.dependencies.tinyjoin).toBe(tinyjoinDependency);
+  expect(manifest.dependencies).toEqual({
+    ...QUERY_DEPENDENCIES[queries],
+    tinyjoin: tinyjoinDependency,
+  });
   expect(manifest.scripts.build).toBe(
     language === "typescript" ? "tsc --noEmit && vite build" : "vite build",
   );
@@ -115,7 +148,6 @@ async function installBuildAndCheck(app: GeneratedApp): Promise<void> {
     name: "tinyjoin",
     version: "0.5.0",
   });
-
   run(npm, ["run", "build"], path);
 
   const assets = await readdir(resolve(path, "dist/assets"));

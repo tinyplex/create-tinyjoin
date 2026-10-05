@@ -1,0 +1,67 @@
+import {DrizzleQueryError, eq} from 'drizzle-orm';
+import {drizzle, push} from 'tinyjoin/drizzle';
+import * as schema from './schema';
+import {todos} from './schema';
+import type {Client} from 'tinyjoin';
+
+export type Todo = typeof todos.$inferSelect;
+
+// Drizzle rejects with an error of its own, holding the failed query and its
+// parameters, whose cause is the TinyJoin error. The app presents TinyJoin's
+// errors, so each query rejects with that cause instead.
+const run = async <Result>(query: PromiseLike<Result>): Promise<Result> => {
+  try {
+    return await query;
+  } catch (error) {
+    throw error instanceof DrizzleQueryError ? (error.cause ?? error) : error;
+  }
+};
+
+export const initializeTodos = async (database: Client): Promise<void> => {
+  const db = drizzle(database, {schema});
+  const {tables} = await database.getSchema();
+  // push() makes the database hold the schema's tables, and changes nothing
+  // once it does. Concurrent tabs can race to initialize it, but only the tab
+  // whose push() creates the todos table adds examples.
+  if ((await push(db, schema)) && !tables.some(({name}) => name === 'todos')) {
+    await run(
+      db.insert(todos).values([
+        {id: '1', text: 'Learn TinyJoin', completed: false, created: 1},
+        {id: '2', text: 'Build an app', completed: false, created: 2},
+      ]),
+    );
+  }
+};
+
+export const createTodos = (database: Client) => {
+  const db = drizzle(database, {schema});
+
+  return {
+    read: (): Promise<Todo[]> =>
+      run(db.select().from(todos).orderBy(todos.created, todos.id)),
+
+    add: async (text: string): Promise<void> => {
+      await run(
+        db.insert(todos).values({
+          id: crypto.randomUUID(),
+          text,
+          completed: false,
+          created: Date.now(),
+        }),
+      );
+    },
+
+    setCompleted: async (id: string, completed: boolean): Promise<void> => {
+      await run(db.update(todos).set({completed}).where(eq(todos.id, id)));
+    },
+
+    remove: async (id: string): Promise<void> => {
+      await run(db.delete(todos).where(eq(todos.id, id)));
+    },
+
+    subscribe: (listener: () => void) =>
+      database.subscribe({tables: ['todos']}, listener),
+  };
+};
+
+export type Todos = ReturnType<typeof createTodos>;

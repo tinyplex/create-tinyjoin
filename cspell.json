@@ -11,7 +11,9 @@
   "words": [
     "indexeddb",
     "jamesgpearce",
+    "kysely",
     "opfs",
+    "savepoints",
     "tinybase",
     "tinycreate",
     "tinyjoin",

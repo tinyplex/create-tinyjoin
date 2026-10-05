@@ -12,6 +12,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
+{{#if drizzle}}
+    "drizzle-orm": "^0.45.3",
+{{/if}}
+{{#if kysely}}
+    "kysely": "^0.29.6",
+{{/if}}
     "tinyjoin": "{{tinyjoinDependency}}"
   },
   "devDependencies": {

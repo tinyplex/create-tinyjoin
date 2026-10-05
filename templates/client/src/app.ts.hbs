@@ -1,4 +1,5 @@
 import {databaseReady} from './database';
+import {createTodos} from './todos';
 import {createTopBar} from './topBar';
 import {showLoading, hideLoading} from './loading';
 import {createTodoInput} from './todoInput';
@@ -15,14 +16,14 @@ export const app = async (root: HTMLElement) => {
   const loadingDiv = showLoading(appElement);
 
   try {
-    const database = await databaseReady;
-    const todoInputContainer = createTodoInput(database);
+    const todos = createTodos(await databaseReady);
+    const todoInputContainer = createTodoInput(todos);
     appElement.appendChild(todoInputContainer);
 
     const input = todoInputContainer.querySelector('input')!;
     input.focus();
 
-    appElement.appendChild(createTodoList(database));
+    appElement.appendChild(createTodoList(todos));
   } catch (error) {
     const message = createError();
     message.id = 'startupError';

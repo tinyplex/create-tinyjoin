@@ -1,0 +1,62 @@
+import {ClientError, type Client} from 'tinyjoin';
+
+export type Todo = {
+  id: string;
+  text: string;
+  completed: boolean;
+  created: number;
+};
+
+export const initializeTodos = async (database: Client): Promise<void> => {
+  try {
+    // One atomic script creates and seeds the table. Concurrent tabs can race
+    // to initialize it, but only the tab that creates the table adds examples.
+    await database.exec(`
+      CREATE TABLE todos (
+        id TEXT PRIMARY KEY,
+        text TEXT NOT NULL,
+        completed BOOLEAN NOT NULL DEFAULT false,
+        created INTEGER NOT NULL DEFAULT 0
+      );
+      INSERT INTO todos (id, text, completed, created)
+      VALUES ('1', 'Learn TinyJoin', false, 1), ('2', 'Build an app', false, 2)
+    `);
+  } catch (error) {
+    if (!(error instanceof ClientError && error.code === 'TABLE_ALREADY_EXISTS')) {
+      throw error;
+    }
+  }
+};
+
+export const createTodos = (database: Client) => ({
+  read: async (): Promise<Todo[]> => {
+    const {rows} = await database.query<Todo>(
+      'SELECT id, text, completed, created FROM todos ORDER BY created, id',
+    );
+    return rows;
+  },
+
+  add: async (text: string): Promise<void> => {
+    await database.query(
+      `INSERT INTO todos (id, text, completed, created)
+       VALUES ($1, $2, $3, $4)`,
+      [crypto.randomUUID(), text, false, Date.now()],
+    );
+  },
+
+  setCompleted: async (id: string, completed: boolean): Promise<void> => {
+    await database.query('UPDATE todos SET completed = $1 WHERE id = $2', [
+      completed,
+      id,
+    ]);
+  },
+
+  remove: async (id: string): Promise<void> => {
+    await database.query('DELETE FROM todos WHERE id = $1', [id]);
+  },
+
+  subscribe: (listener: () => void) =>
+    database.subscribe({tables: ['todos']}, listener),
+});
+
+export type Todos = ReturnType<typeof createTodos>;

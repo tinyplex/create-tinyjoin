@@ -1,0 +1,96 @@
+import {Kysely} from 'kysely';
+import {Migrator, type Migration} from 'kysely/migration';
+import {TinyJoinDialect} from 'tinyjoin/kysely';
+import type {Client} from 'tinyjoin';
+
+export type Todo = {
+  id: string;
+  text: string;
+  completed: boolean;
+  created: number;
+};
+
+type Database = {todos: Todo};
+
+const connect = (database: Client) =>
+  new Kysely<Database>({dialect: new TinyJoinDialect({client: database})});
+
+// The Migrator runs each migration once per database, in name order, and one
+// tab at a time. Add a migration for each change to the schema, rather than
+// editing one that has run. A migration's statements run one at a time, so
+// make each one safe to run again after a tab closes partway through.
+const migrations: Record<string, Migration> = {
+  '0001_create_todos': {
+    up: async (db) => {
+      await db.schema
+        .createTable('todos')
+        .ifNotExists()
+        .addColumn('id', 'text', (column) => column.primaryKey())
+        .addColumn('text', 'text', (column) => column.notNull())
+        .addColumn('completed', 'boolean', (column) =>
+          column.notNull().defaultTo(false),
+        )
+        .addColumn('created', 'integer', (column) =>
+          column.notNull().defaultTo(0),
+        )
+        .execute();
+      await db
+        .insertInto('todos')
+        .values([
+          {id: '1', text: 'Learn TinyJoin', completed: false, created: 1},
+          {id: '2', text: 'Build an app', completed: false, created: 2},
+        ])
+        .onConflict((conflict) => conflict.column('id').doNothing())
+        .execute();
+    },
+  },
+};
+
+export const initializeTodos = async (database: Client): Promise<void> => {
+  const {error} = await new Migrator({
+    db: connect(database),
+    provider: {getMigrations: async () => migrations},
+  }).migrateToLatest();
+  if (error) {
+    throw error;
+  }
+};
+
+export const createTodos = (database: Client) => {
+  const db = connect(database);
+
+  return {
+    read: async (): Promise<Todo[]> =>
+      db
+        .selectFrom('todos')
+        .selectAll()
+        .orderBy('created')
+        .orderBy('id')
+        .execute(),
+
+    add: async (text: string): Promise<void> => {
+      await db
+        .insertInto('todos')
+        .values({
+          id: crypto.randomUUID(),
+          text,
+          completed: false,
+          created: Date.now(),
+        })
+        .execute();
+    },
+
+    setCompleted: async (id: string, completed: boolean): Promise<void> => {
+      await db.updateTable('todos').set({completed}).where('id', '=', id).execute();
+    },
+
+    remove: async (id: string): Promise<void> => {
+      await db.deleteFrom('todos').where('id', '=', id).execute();
+    },
+
+    subscribe: (listener: () => void) =>
+      database.subscribe({tables: ['todos']}, listener),
+  };
+};
+
+export type Todos = ReturnType<typeof createTodos>;

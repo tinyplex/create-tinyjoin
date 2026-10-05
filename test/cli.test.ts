@@ -10,6 +10,7 @@ const cli = resolve(root, "dist/cli.js");
 let output: string;
 
 type Language = "typescript" | "javascript";
+type Queries = "sql" | "drizzle" | "kysely";
 type Storage = "opfs" | "memory";
 
 const LANGUAGES: { language: Language; ext: "ts" | "js"; icon: string }[] = [
@@ -30,7 +31,17 @@ const SCRIPT_MODULES = [
   "todoInput",
   "todoItem",
   "todoList",
+  "todos",
   "topBar",
+];
+
+/** The modules that hold the interface, the same whichever queries are chosen. */
+const INTERFACE_MODULES = [
+  "app",
+  "database",
+  "todoInput",
+  "todoItem",
+  "todoList",
 ];
 
 const STYLE_MODULES = [
@@ -46,7 +57,7 @@ const STYLE_MODULES = [
   "topBar",
 ];
 
-function expectedFiles(language: Language): string[] {
+function expectedFiles(language: Language, queries: Queries = "sql"): string[] {
   const { ext, icon } = LANGUAGES.find(
     (candidate) => candidate.language === language,
   )!;
@@ -60,6 +71,7 @@ function expectedFiles(language: Language): string[] {
     "public/favicon.svg",
     `public/${icon}`,
     ...SCRIPT_MODULES.map((module) => `src/${module}.${ext}`),
+    ...(queries === "drizzle" ? [`src/schema.${ext}`] : []),
     ...STYLE_MODULES.map((module) => `src/${module}.css`),
     ...(language === "typescript" ? ["tsconfig.json"] : []),
   ].sort();
@@ -80,6 +92,7 @@ describe("create-tinyjoin CLI", () => {
     expect(help.stdout).toContain("npm create tinyjoin@latest");
     expect(help.stdout).toContain("--non-interactive");
     expect(help.stdout).toContain("--language typescript");
+    expect(help.stdout).toContain("--queries sql");
     expect(help.stdout).toContain("--storage opfs");
 
     const catalog = JSON.parse(run(["--list-options"]).stdout);
@@ -89,6 +102,11 @@ describe("create-tinyjoin CLI", () => {
         values: ["typescript", "javascript"],
         required: true,
         default: "typescript",
+      },
+      queries: {
+        values: ["sql", "drizzle", "kysely"],
+        required: true,
+        default: "sql",
       },
       storage: {
         values: ["opfs", "memory"],
@@ -103,7 +121,7 @@ describe("create-tinyjoin CLI", () => {
     });
   }, 15_000);
 
-  it("defaults to TypeScript when no language is chosen", async () => {
+  it("defaults to TypeScript and SQL when no language or queries are chosen", async () => {
     run([
       "--non-interactive",
       "--projectName",
@@ -146,6 +164,7 @@ describe("create-tinyjoin CLI", () => {
         const readme = await read(project, "README.md");
         const agentInstructions = await read(project, "AGENTS.md");
         const database = await read(project, `src/database.${ext}`);
+        const todos = await read(project, `src/todos.${ext}`);
         const vite = await read(project, `vite.config.${ext}`);
 
         expect(html).toContain("<title>TinyJoin Todos</title>");
@@ -169,9 +188,10 @@ describe("create-tinyjoin CLI", () => {
         expect(database).toContain("from 'tinyjoin'");
         expect(database).toContain("await create(DATA_DIR)");
         expect(database).toContain("export const DATA_DIR = 'memory://'");
-        expect(database).toContain("CREATE TABLE todos");
-        expect(database).toContain("TABLE_ALREADY_EXISTS");
-        expect(database.match(/CREATE TABLE/g)).toHaveLength(1);
+        expect(database).toContain("await initializeTodos(database)");
+        expect(todos).toContain("CREATE TABLE todos");
+        expect(todos).toContain("TABLE_ALREADY_EXISTS");
+        expect(todos.match(/CREATE TABLE/g)).toHaveLength(1);
       });
 
       it("keeps the TinyBase starter's markup and styles with local fonts and accent", async () => {
@@ -220,24 +240,91 @@ describe("create-tinyjoin CLI", () => {
         const project = resolve(output, "queries");
 
         const database = await read(project, `src/database.${ext}`);
+        const todos = await read(project, `src/todos.${ext}`);
         const todoInput = await read(project, `src/todoInput.${ext}`);
         const todoList = await read(project, `src/todoList.${ext}`);
 
-        expect(todoInput).toContain("crypto.randomUUID()");
-        expect(todoInput).toContain("INSERT INTO todos");
-        expect(todoList).toContain(
+        expect(todos).toContain("crypto.randomUUID()");
+        expect(todos).toContain("INSERT INTO todos");
+        expect(todos).toContain(
           "SELECT id, text, completed, created FROM todos",
         );
-        expect(todoList).toContain(
+        expect(todos).toContain(
           "UPDATE todos SET completed = $1 WHERE id = $2",
         );
-        expect(todoList).toContain("DELETE FROM todos WHERE id = $1");
-        expect(todoList).toContain("database.subscribe({tables: ['todos']}");
+        expect(todos).toContain("DELETE FROM todos WHERE id = $1");
+        expect(todos).toContain("database.subscribe({tables: ['todos']}");
         expect(database).toContain("database.close()");
-        expect(`${database}\n${todoInput}\n${todoList}`).not.toMatch(
+        // The interface reaches the table only through the todos module.
+        expect(`${todoInput}\n${todoList}`).not.toMatch(
+          /todos (SET|WHERE)|FROM todos|INTO todos/,
+        );
+        expect(`${database}\n${todos}\n${todoInput}\n${todoList}`).not.toMatch(
           /__tinyjoinDemo|performance\.now|\bjoin\b|group by|transaction\(/i,
         );
       });
+
+      it("generates the same starter with the Drizzle ORM", async () => {
+        generate("drizzle-app", language, "opfs", "drizzle");
+        const project = resolve(output, "drizzle-app");
+        expect(await listFiles(project)).toEqual(
+          expectedFiles(language, "drizzle"),
+        );
+
+        const manifest = JSON.parse(await read(project, "package.json"));
+        expect(manifest.dependencies).toEqual({
+          "drizzle-orm": "^0.45.3",
+          tinyjoin: "9.9.9-test",
+        });
+        const todos = await read(project, `src/todos.${ext}`);
+        expect(todos).toContain("from 'tinyjoin/drizzle'");
+        expect(todos).toContain("const db = drizzle(database, {schema})");
+        expect(todos).toContain("await push(db, schema)");
+        expect(todos).toContain("DrizzleQueryError");
+        expect(todos).toContain("database.subscribe({tables: ['todos']}");
+        expect(todos).not.toMatch(/CREATE TABLE|INSERT INTO/);
+        expect(await read(project, `src/schema.${ext}`)).toContain(
+          "export const todos = pgTable('todos', {",
+        );
+        expect(await read(project, `src/info.${ext}`)).toContain(
+          "written with the Drizzle ORM",
+        );
+        expect(await read(project, "README.md")).toContain("**Drizzle ORM**");
+        expect(await read(project, "AGENTS.md")).toContain(
+          "- **Queries**: Drizzle ORM, through `tinyjoin/drizzle`",
+        );
+        await expectSameInterface(project, language);
+      }, 15_000);
+
+      it("generates the same starter with the Kysely query builder", async () => {
+        generate("kysely-app", language, "opfs", "kysely");
+        const project = resolve(output, "kysely-app");
+        expect(await listFiles(project)).toEqual(
+          expectedFiles(language, "kysely"),
+        );
+
+        const manifest = JSON.parse(await read(project, "package.json"));
+        expect(manifest.dependencies).toEqual({
+          kysely: "^0.29.6",
+          tinyjoin: "9.9.9-test",
+        });
+        const todos = await read(project, `src/todos.${ext}`);
+        expect(todos).toContain("from 'tinyjoin/kysely'");
+        expect(todos).toContain("from 'kysely/migration'");
+        expect(todos).toContain("new TinyJoinDialect({client: database})");
+        expect(todos).toContain("new Migrator({");
+        expect(todos).toContain(".onConflict(");
+        expect(todos).toContain("database.subscribe({tables: ['todos']}");
+        expect(todos).not.toMatch(/CREATE TABLE|INSERT INTO/);
+        expect(await read(project, `src/info.${ext}`)).toContain(
+          "written with the Kysely query builder",
+        );
+        expect(await read(project, "README.md")).toContain("**Kysely**");
+        expect(await read(project, "AGENTS.md")).toContain(
+          "- **Queries**: Kysely query builder, through `tinyjoin/kysely`",
+        );
+        await expectSameInterface(project, language);
+      }, 15_000);
 
       it("generates the same starter with data saved across reloads", async () => {
         generate("saved-app", language, "opfs");
@@ -264,21 +351,36 @@ describe("create-tinyjoin CLI", () => {
         expect(
           await snapshotOf(resolve(output, "saved-app")),
         ).toMatchSnapshot();
-      });
+
+        for (const queries of ["drizzle", "kysely"] as const) {
+          generate(`${queries}-app`, language, "opfs", queries);
+          expect(
+            await snapshotOf(resolve(output, `${queries}-app`)),
+          ).toMatchSnapshot();
+        }
+      }, 15_000);
     });
   }
 
   it("removes every type annotation from the JavaScript starter", async () => {
-    generate("javascript-app", "javascript", "memory");
-    const project = resolve(output, "javascript-app");
-
-    for (const module of SCRIPT_MODULES) {
-      const source = await read(project, `src/${module}.js`);
-      expect(source).not.toMatch(
-        /\bexport type\b|\binterface\b|:\s*(HTMLElement|string|boolean|Promise<)/,
-      );
+    for (const queries of ["sql", "drizzle", "kysely"] as const) {
+      generate(`javascript-${queries}-app`, "javascript", "memory", queries);
+      const project = resolve(output, `javascript-${queries}-app`);
+      const modules = [
+        ...SCRIPT_MODULES,
+        ...(queries === "drizzle" ? ["schema"] : []),
+      ];
+      for (const module of modules) {
+        const source = await read(project, `src/${module}.js`);
+        // A Drizzle column, as in `completed: boolean('completed')`, is a call
+        // rather than a type. A stripped type import leaves no empty import.
+        expect(source).not.toMatch(
+          /\bexport type\b|\binterface\b|\bimport type\b|import \{\}|:\s*(HTMLElement|string|boolean|Promise<|Client\b|Record<)(?!\()|<(Result|Database|Todo)\b/,
+        );
+      }
     }
 
+    const project = resolve(output, "javascript-sql-app");
     // ts-blank-space leaves the sources otherwise untouched, as in
     // create-tinybase.
     expect(await read(project, "src/todoItem.js")).toContain(
@@ -287,9 +389,9 @@ describe("create-tinyjoin CLI", () => {
     expect(await read(project, "src/index.js")).toContain(
       "const root = document.getElementById('root');",
     );
-  });
+  }, 15_000);
 
-  it("rejects unsupported language and storage values", () => {
+  it("rejects unsupported language, queries, and storage values", () => {
     const language = run(
       [
         "--non-interactive",
@@ -325,7 +427,25 @@ describe("create-tinyjoin CLI", () => {
     expect(`${storage.stdout}${storage.stderr}`).toContain(
       "Storage must be one of: opfs, memory.",
     );
-  });
+
+    const queries = run(
+      [
+        "--non-interactive",
+        "--projectName",
+        "bad-queries",
+        "--queries",
+        "prisma",
+        "--installAndRun",
+        "false",
+      ],
+      {},
+      false,
+    );
+    expect(queries.status).not.toBe(0);
+    expect(`${queries.stdout}${queries.stderr}`).toContain(
+      "Queries must be one of: sql, drizzle, kysely.",
+    );
+  }, 15_000);
 
   it("targets the published TinyJoin release by default", async () => {
     run([
@@ -378,7 +498,12 @@ describe("create-tinyjoin CLI", () => {
   });
 });
 
-function generate(projectName: string, language: Language, storage: Storage) {
+function generate(
+  projectName: string,
+  language: Language,
+  storage: Storage,
+  queries: Queries = "sql",
+) {
   return run(
     [
       "--non-interactive",
@@ -386,6 +511,8 @@ function generate(projectName: string, language: Language, storage: Storage) {
       projectName,
       "--language",
       language,
+      "--queries",
+      queries,
       "--storage",
       storage,
       "--installAndRun",
@@ -393,6 +520,22 @@ function generate(projectName: string, language: Language, storage: Storage) {
     ],
     { CREATE_TINYJOIN_DEPENDENCY: "9.9.9-test" },
   );
+}
+
+/** Expects a project's interface modules to match the SQL starter's. */
+async function expectSameInterface(project: string, language: Language) {
+  const { ext } = LANGUAGES.find(
+    (candidate) => candidate.language === language,
+  )!;
+  generate("sql-app", language, "opfs");
+  for (const module of INTERFACE_MODULES) {
+    expect(await read(project, `src/${module}.${ext}`)).toBe(
+      (await read(resolve(output, "sql-app"), `src/${module}.${ext}`)).replace(
+        "tinyjoin-sql-app-db-v3",
+        `tinyjoin-${project.split(/[\\/]/).pop()}-db-v3`,
+      ),
+    );
+  }
 }
 
 function run(

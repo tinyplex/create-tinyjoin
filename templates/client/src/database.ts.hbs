@@ -1,13 +1,5 @@
-import {create, ClientError, type Client} from 'tinyjoin';
-
-export type TodoRow = {
-  id: string;
-  text: string;
-  completed: boolean;
-  created: number;
-};
-
-export type TodosDatabase = Client;
+import {create, type Client} from 'tinyjoin';
+import {initializeTodos} from './todos';
 
 {{#if usesOpfs}}
 export const DATA_DIR = 'opfs://{{storageName}}';
@@ -15,7 +7,7 @@ export const DATA_DIR = 'opfs://{{storageName}}';
 export const DATA_DIR = 'memory://';
 {{/if}}
 
-export const createTodosDatabase = async (): Promise<TodosDatabase> => {
+export const createTodosDatabase = async (): Promise<Client> => {
   const database = await create(DATA_DIR);
 
   try {
@@ -24,27 +16,6 @@ export const createTodosDatabase = async (): Promise<TodosDatabase> => {
   } catch (error) {
     await database.close().catch(() => undefined);
     throw error;
-  }
-};
-
-const initializeTodos = async (database: TodosDatabase): Promise<void> => {
-  try {
-    // One atomic script creates and seeds the table. Concurrent tabs can race
-    // to initialize it, but only the tab that creates the table adds examples.
-    await database.exec(`
-      CREATE TABLE todos (
-        id TEXT PRIMARY KEY,
-        text TEXT NOT NULL,
-        completed BOOLEAN NOT NULL DEFAULT false,
-        created INTEGER NOT NULL DEFAULT 0
-      );
-      INSERT INTO todos (id, text, completed, created)
-      VALUES ('1', 'Learn TinyJoin', false, 1), ('2', 'Build an app', false, 2)
-    `);
-  } catch (error) {
-    if (!(error instanceof ClientError && error.code === 'TABLE_ALREADY_EXISTS')) {
-      throw error;
-    }
   }
 };
 

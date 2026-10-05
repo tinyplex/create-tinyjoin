@@ -9,15 +9,35 @@ lifecycle while adapting the application to the user's requirements.
 - **Language**: {{#if typescript}}TypeScript{{else}}JavaScript{{/if}}
 - **UI**: Vanilla JS
 - **Data**: TinyJoin relational database in the browser
+- **Queries**: {{#if drizzle}}Drizzle ORM, through `tinyjoin/drizzle`{{else if kysely}}Kysely query builder, through `tinyjoin/kysely`{{else}}SQL, through the TinyJoin client{{/if}}
 - **Persistence**: {{#if usesOpfs}}saved in this browser across reloads{{else}}kept for the current visit only{{/if}}
 
 The database client is opened once in `src/database.{{ext}}` and shared through
 the `databaseReady` promise. Reuse it within the application.{{#if usesOpfs}}
 Tabs share the saved database automatically; keep its name stable.{{/if}}
+`src/todos.{{ext}}` sets up the `todos` table and runs every query on it; the
+interface uses only the API that its `createTodos()` returns.
 
+{{#if drizzle}}
+As each tab starts, `push()` makes the database hold the schema in
+`src/schema.{{ext}}`, and only the tab whose `push()` creates the `todos` table
+inserts starter rows, so concurrent first visits cannot seed twice and an
+existing empty table stays empty. Preserve this behavior. Change tables in
+`src/schema.{{ext}}`; `push()` refuses a change to a primary key or to a
+column's type.
+{{else if kysely}}
+As each tab starts, Kysely's `Migrator` runs the migrations in
+`src/todos.{{ext}}` that the database has not run, one tab at a time. The first
+creates the `todos` table and inserts starter rows, so concurrent first visits
+cannot seed twice and an existing empty table stays empty. Preserve this
+behavior. Add a migration for each schema change rather than editing one that
+has run. A migration's statements run one at a time, outside a transaction, so
+make each safe to run again.
+{{else}}
 One atomic script creates the schema and inserts starter rows. Only
 `TABLE_ALREADY_EXISTS` is ignored, so concurrent first visits cannot seed
 twice and an existing empty table stays empty. Preserve this behavior.
+{{/if}}
 
 Await writes, preserve drafts on failure, and keep errors visible. Retry at
 startup reloads the page to create a fresh client. Do not automatically replay
@@ -28,26 +48,51 @@ reloads it so the app creates a fresh client instead of reusing a closed one.
 ## Key Files
 
 - `README.md` explains how to run the generated project.
-- `src/database.{{ext}}` opens the database and defines the `todos` table.
+- `src/database.{{ext}}` opens the database and closes it with the page.
+- `src/todos.{{ext}}` sets up the `todos` table and holds every query on it.
+{{#if drizzle}}
+- `src/schema.{{ext}}` is the Drizzle schema that `push()` applies.
+{{/if}}
 - `src/app.{{ext}}` contains the main application UI.
-- `src/todoList.{{ext}}` reads the `todos` table and subscribes to its changes.
+- `src/todoList.{{ext}}` renders the todos and subscribes to their changes.
 - `vite.config.{{ext}}` enables offline production builds with `tinyjoinOffline()`.
 
 The production app caches its complete build after an online visit. Keep the
 offline plugin configured when changing build output. It waits for open tabs
 to close before activating an update; do not force updates into running tabs.
 For an existing service worker, use the plugin's manifest mode and integrate
-its assets there instead of adding a competing registration. Offline caching
-does not migrate a saved schema or synchronize data to a server.
+its assets there instead of adding a competing registration.
+{{#if drizzle}}
+Offline caching does not synchronize data to a server; an update's `push()`
+changes the saved schema as it starts.
+{{else if kysely}}
+Offline caching does not synchronize data to a server; an update's migrations
+change the saved schema as it starts.
+{{else}}
+Offline caching does not migrate a saved schema or synchronize data to a server.
+{{/if}}
 
 ## Working Method
 
-1. Read `README.md` and `src/database.{{ext}}` before making changes.
+1. Read `README.md`, `src/database.{{ext}}`, and `src/todos.{{ext}}` before
+   making changes.
 2. Keep application data in TinyJoin rather than duplicating it in UI state.
+{{#if drizzle}}
+3. Write queries with Drizzle's query builder, never as SQL text built from
+   user input. TinyJoin runs a bounded PostgreSQL dialect: use the column types
+   it has, and avoid SQL functions, `extras`, and nested transactions.
+{{else if kysely}}
+3. Write queries with Kysely's query builder, never as SQL text built from user
+   input. TinyJoin runs a bounded PostgreSQL dialect: use the column types it
+   has, use `selectAll('table')` rather than `selectAll()` over a join whose
+   tables share column names, and avoid `exists`, SQL functions, and
+   savepoints.
+{{else}}
 3. Use `$1` parameter arrays for application
    values. Do not concatenate user input into SQL.
+{{/if}}
 4. Generate stable row identifiers in application code.
-5. Keep the schema safe to run again when the app reloads.
+5. Keep the schema setup safe to run again when the app reloads.
 6. Keep the database client open while the app is running and close it during
    page teardown.
 7. Run the build after edits.
@@ -68,3 +113,11 @@ the same URL. Verify loading, edits, and reloads; the development server does
 not install offline support.
 
 Current TinyJoin documentation: https://tinyjoin.org/llms.txt
+{{#if drizzle}}
+
+Drizzle with TinyJoin: https://tinyjoin.org/guides/drizzle/
+{{/if}}
+{{#if kysely}}
+
+Kysely with TinyJoin: https://tinyjoin.org/guides/kysely/
+{{/if}}

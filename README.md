@@ -7,8 +7,9 @@ npm create tinyjoin@latest
 ```
 
 The generated project is ready to run at its root and needs no database server,
-account, or credentials. Choose TypeScript or JavaScript, and whether its todos
-should remain after reloads or start fresh each time.
+account, or credentials. Choose TypeScript or JavaScript; SQL, the Drizzle ORM,
+or the Kysely query builder for its queries; and whether its todos should
+remain after reloads or start fresh each time.
 
 Your app should look something like this:
 
@@ -16,7 +17,7 @@ Your app should look something like this:
 
 - Task list with add/complete/delete
 - Single TinyJoin database with one `todos` table
-- Demonstrates basic CRUD operations in SQL
+- Demonstrates basic CRUD operations in SQL, or with Drizzle or Kysely
 - Automatic multi-tab access for saved data
 - Offline production app loading after the first online visit
 - Perfect starter example
@@ -31,6 +32,7 @@ For agents and CI, every option can be supplied non-interactively:
 npm create tinyjoin@latest -- --non-interactive \
   --projectName my-tinyjoin-app \
   --language typescript \
+  --queries sql \
   --storage opfs \
   --installAndRun false
 ```
@@ -50,12 +52,36 @@ becomes `.js` when JavaScript is chosen):
 - `vite.config.ts` enables production offline loading through `tinyjoinOffline()`.
 - `src/index.ts` bootstraps the app on load.
 - `src/app.ts` builds the app shell, showing a spinner until the database opens.
-- `src/database.ts` opens the database, defines the `todos` table, and adds the
-  starter todos on the first visit.
+- `src/database.ts` opens the database once, and closes it with the page.
+- `src/todos.ts` sets up the `todos` table, adds the starter todos on the first
+  visit, and runs every query the interface needs, behind one small API.
+- `src/schema.ts`, with Drizzle, is the Drizzle schema of the `todos` table.
 - `src/todoInput.ts`, `src/todoList.ts`, and `src/todoItem.ts` are the todo
   interface, each with a colocated stylesheet.
 - `src/topBar.ts`, `src/title.ts`, `src/info.ts`, `src/loading.ts`,
   `src/button.ts`, and `src/input.ts` are the shared interface pieces.
+
+## Queries
+
+The three choices of queries generate the same app, whose interface calls the
+API that `createTodos()` in `src/todos.ts` returns. Only that module, the
+dependencies, and the docs differ:
+
+- **SQL** runs parameterized statements on the TinyJoin client. One atomic
+  script creates the table and adds the starter todos.
+- **Drizzle** declares the table in `src/schema.ts` and queries it with the
+  Drizzle ORM through `tinyjoin/drizzle`. `push()` makes the database hold the
+  schema as each tab starts, and the starter todos are added only by the tab
+  whose `push()` creates the table.
+- **Kysely** queries the table with the Kysely query builder through
+  `tinyjoin/kysely`. Kysely's `Migrator` runs the app's migrations as each tab
+  starts, one tab at a time; the first creates the table and adds the starter
+  todos.
+
+So in each, tabs opened together add the starter todos once, and a list
+emptied by the user stays empty. Drizzle adds about 21 KB of compressed script
+to the page, and Kysely about 31 KB; the Worker and the database engine are the
+same.
 
 ## TypeScript and JavaScript
 
@@ -93,12 +119,13 @@ npm run test:e2e        # real generated-app behavior in Chromium
 `npm run publishPackage` runs all of the above before publishing. Add project
 vocabulary to `cspell.json` rather than disabling the check.
 
-`npm test` compares every generated file, for both languages and both storage
-modes, against the snapshots in `test/__snapshots__`. Run
-`npx vitest run test/cli.test.ts -u` to accept intentional template changes.
-`npm run test:generated` installs and builds all four combinations, and
-`npm run test:e2e` then drives the two saved apps in Chromium and tests offline
-production loading for all four combinations.
+`npm test` compares every generated file, for both languages with both storage
+modes, and with each query builder, against the snapshots in
+`test/__snapshots__`. Run `npx vitest run test/cli.test.ts -u` to accept
+intentional template changes. `npm run test:generated` installs and builds
+eight apps: every language and storage combination with SQL, and each language
+with each query builder and saved data. `npm run test:e2e` then drives the six
+saved apps in Chromium and tests offline production loading for all eight.
 
 Run the local generator from this repository's parent directory with:
 

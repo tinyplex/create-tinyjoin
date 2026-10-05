@@ -1,8 +1,8 @@
 import { expect, test } from "@playwright/test";
 import { e2eApps } from "../paths.js";
 
-for (const { language, port } of e2eApps) {
-  test(`the generated ${language} app adds, toggles, deletes, and reloads saved todos`, async ({
+for (const { label, language, port } of e2eApps) {
+  test(`the generated ${label} app adds, toggles, deletes, and reloads saved todos`, async ({
     page,
   }) => {
     const consoleErrors: string[] = [];

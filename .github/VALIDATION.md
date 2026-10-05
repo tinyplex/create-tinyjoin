@@ -6,10 +6,11 @@ Chromium with its system dependencies. Its token has read-only access and it
 uses no publication credentials, including for fork pull requests.
 
 `npm run prePublishPackage` remains the registry-backed release gate. It runs
-spelling, type checking, CLI snapshots, all four language/storage generated
-builds, and Chromium persistence, error, offline and two-tab scenarios. The
-workflow also runs a full tooling audit and a package dry run. It preserves
-the console log and failure traces for 14 days.
+spelling, type checking, CLI snapshots, all eight generated builds (each
+language and storage combination with SQL, and each language with Drizzle and
+with Kysely), and Chromium persistence, error, offline and two-tab scenarios.
+The workflow also runs a full tooling audit and a package dry run. It
+preserves the console log and failure traces for 14 days.
 
 The registry lane intentionally leaves `CREATE_TINYJOIN_DEPENDENCY` unset;
 the generated lockfile must identify the published TinyJoin tarball. If a
@@ -26,7 +27,7 @@ npm run test:candidate
 ```
 
 The candidate script packs the built sibling `dist/`, passes that tarball via
-`CREATE_TINYJOIN_DEPENDENCY`, and runs all four generated builds and the same
+`CREATE_TINYJOIN_DEPENDENCY`, and runs all eight generated builds and the same
 Chromium suite. It removes the temporary tarball afterwards. Rebuild TinyJoin
 after source changes before repeating this check.
 
