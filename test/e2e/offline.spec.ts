@@ -9,11 +9,15 @@ for (const { language, storage, port } of offlineApps) {
     const url = `http://127.0.0.1:${port}/`;
     await page.goto(url);
     await expect(page.locator(".todoItem")).toHaveCount(2);
-    expect(
-      await page.evaluate(
-        "navigator.serviceWorker.ready.then(registration => registration.active.state)",
-      ),
-    ).toBe("activated");
+    // ready resolves once the worker starts activating, which it finishes
+    // a moment later.
+    await expect
+      .poll(() =>
+        page.evaluate(
+          "navigator.serviceWorker.ready.then(registration => registration.active.state)",
+        ),
+      )
+      .toBe("activated");
 
     // Close the original page and take the whole browser context offline.
     // The new navigation must come from the installed service worker, not
