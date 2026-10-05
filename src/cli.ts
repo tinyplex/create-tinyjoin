@@ -131,7 +131,7 @@ const config = {
       storage,
       usesOpfs: storage === "opfs",
       storageName: createStorageName(projectName),
-      tinyjoinDependency: process.env.CREATE_TINYJOIN_DEPENDENCY ?? "^0.4.0",
+      tinyjoinDependency: process.env.CREATE_TINYJOIN_DEPENDENCY ?? "^0.5.0",
     };
   },
   getFiles: (context: TemplateContext): FileConfig[] => {
