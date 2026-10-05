@@ -160,10 +160,12 @@ const config = {
       tinyjoinDependency: process.env.CREATE_TINYJOIN_DEPENDENCY ?? "^0.5.0",
     };
   },
+  // Files that depend on an option are included by the templates that use them,
+  // with includeFile, so the choice sits beside the code that needs it.
   getFiles: (context: TemplateContext): FileConfig[] => {
-    const { ext, typescript, queries, drizzle } = context;
-    const script = (name: string, template = name): FileConfig => ({
-      template: `client/src/${template}.ts.hbs`,
+    const { ext, typescript } = context;
+    const script = (name: string): FileConfig => ({
+      template: `client/src/${name}.ts.hbs`,
       output: `src/${name}.${ext}`,
       prettier: true,
       transpile: !typescript,
@@ -197,22 +199,10 @@ const config = {
         prettier: true,
         transpile: !typescript,
       },
-      ...(typescript
-        ? [
-            {
-              template: "client/tsconfig.json.hbs",
-              output: "tsconfig.json",
-              prettier: true,
-            },
-          ]
-        : []),
       {
         template: "client/public/favicon.svg",
         output: "public/favicon.svg",
       },
-      typescript
-        ? { template: "client/public/ts.svg", output: "public/ts.svg" }
-        : { template: "client/public/js.svg", output: "public/js.svg" },
       script("index"),
       script("app"),
       script("topBar"),
@@ -230,9 +220,6 @@ const config = {
       script("input"),
       style("input"),
       script("database"),
-      // Each choice of queries has its own todos module, behind the same API.
-      script("todos", `todos.${queries}`),
-      ...(drizzle ? [script("schema")] : []),
       script("todoInput"),
       style("todoInput"),
       script("todoList"),
@@ -241,6 +228,17 @@ const config = {
       style("todoItem"),
     ];
   },
+  // As in create-tinybase: an included file is formatted when it is code or
+  // markup, and a TypeScript template loses its types in a JavaScript project.
+  processIncludedFile: (
+    file: FileConfig,
+    { javascript }: TemplateContext,
+  ): FileConfig => ({
+    ...file,
+    prettier: file.prettier ?? /\.(js|ts|css|json|html|md)$/.test(file.output),
+    transpile:
+      file.transpile ?? (/\.ts\.hbs$/.test(file.template) && javascript),
+  }),
   templateRoot,
   installCommand: "{pm} install",
   devCommand: "{pm} run dev",

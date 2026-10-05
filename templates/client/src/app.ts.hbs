@@ -1,3 +1,11 @@
+{{!-- The chosen queries decide which template becomes the todos module. --}}
+{{#if drizzle}}
+{{includeFile template="client/src/todos.drizzle.ts.hbs" output="src/todos.{{ext}}"}}
+{{else if kysely}}
+{{includeFile template="client/src/todos.kysely.ts.hbs" output="src/todos.{{ext}}"}}
+{{else}}
+{{includeFile template="client/src/todos.sql.ts.hbs" output="src/todos.{{ext}}"}}
+{{/if}}
 import {databaseReady} from './database';
 import {createTodos} from './todos';
 import {createTopBar} from './topBar';

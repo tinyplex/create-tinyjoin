@@ -9,8 +9,10 @@ export const createInfo = (): HTMLDivElement => {
   container.appendChild(tech);
 
 {{#if typescript}}
+{{includeFile template="client/public/ts.svg" output="public/ts.svg"}}
   addIcon(tech, '/ts.svg', 'Written in TypeScript');
 {{else}}
+{{includeFile template="client/public/js.svg" output="public/js.svg"}}
   addIcon(tech, '/js.svg', 'Written in JavaScript');
 {{/if}}
 

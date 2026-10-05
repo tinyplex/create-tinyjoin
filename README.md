@@ -87,10 +87,17 @@ same.
 
 The templates are written once, in TypeScript. Choosing JavaScript strips their
 types with `ts-blank-space` and renames the outputs to `.js`, exactly as
-`create-tinybase` does: `getFiles` marks each `.ts` template `transpile` when
-the JavaScript language is chosen, and `tinycreate` blanks the types during
+`create-tinybase` does: `getFiles`, and `processIncludedFile` for the files
+that templates include, mark each `.ts` template `transpile` when the
+JavaScript language is chosen, and `tinycreate` blanks the types during
 post-processing. A JavaScript project also drops `tsconfig.json`, the
 `typescript` devDependency, and the `tsc --noEmit` step from its build script.
+
+As in `create-tinybase`, every file that depends on an option is included by a
+template, with `includeFile`, inside the condition that needs it, rather than
+chosen in `src/cli.ts`: the todos module and Drizzle schema by
+`app.ts.hbs` and `todos.drizzle.ts.hbs`, the language icon by `info.ts.hbs`,
+and `tsconfig.json` by `package.json.hbs`.
 
 ## Offline builds
 

@@ -1,3 +1,4 @@
+{{includeFile template="client/src/schema.ts.hbs" output="src/schema.{{ext}}"}}
 import {DrizzleQueryError, eq} from 'drizzle-orm';
 import {drizzle, push} from 'tinyjoin/drizzle';
 import * as schema from './schema';
