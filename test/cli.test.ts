@@ -459,7 +459,7 @@ describe("create-tinyjoin CLI", () => {
     const manifest = JSON.parse(
       await readFile(resolve(output, "published/package.json"), "utf8"),
     );
-    expect(manifest.dependencies.tinyjoin).toBe("^0.5.0");
+    expect(manifest.dependencies.tinyjoin).toBe("^0.6.0");
   });
 
   it("rejects path-like and existing project names", async () => {

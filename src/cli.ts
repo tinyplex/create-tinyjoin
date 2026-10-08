@@ -157,7 +157,7 @@ const config = {
       storage,
       usesOpfs: storage === "opfs",
       storageName: createStorageName(projectName),
-      tinyjoinDependency: process.env.CREATE_TINYJOIN_DEPENDENCY ?? "^0.5.0",
+      tinyjoinDependency: process.env.CREATE_TINYJOIN_DEPENDENCY ?? "^0.6.0",
     };
   },
   // Files that depend on an option are included by the templates that use them,
